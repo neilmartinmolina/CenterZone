@@ -1,0 +1,61 @@
+=== CENTERZONE - SYSTEM SETUP COMPLETE ===
+
+PROBLEMS FIXED:
+1. UTF-16 BOM encoding corruption in PHP files (config.php, core.php, Security.php, pages/*)
+2. Incorrect password hashes in migration (all users had 'password' hash instead of correct ones)
+3. Session configuration timing issues (ini_set after session_start)
+4. Complex routing system causing redirect loops
+5. File organization (pages/ folder) causing confusion
+
+CHANGES MADE:
+1. Converted all PHP files from UTF-16 LE BOM to clean UTF-8
+2. Fixed migration SQL with correct bcrypt hashes for admin/handler/visitor
+3. Moved session settings BEFORE session_start() in config.php
+4. Simplified routing: direct file access (index.php, login.php, dashboard.php, etc.)
+5. Moved pages from pages/ folder to root directory
+6. Updated all redirect URLs from index.php?page=X to direct files
+7. Config.php now loads core.php (which loads db.php, Security.php, etc.)
+8. Fixed login.php to use core.php with CSRF, rate limiting, and proper password verification
+
+DATABASE:
+- centerzone database (used by web app via Apache)
+- updater_db database (synced with same data)
+- 8 tables: users, websites, folders, user_permissions, login_attempts, 
+  password_resets, password_reset_attempts, error_logs
+
+DEFAULT USERS:
+- admin / admin123 (all permissions)
+- handler / handler123 (create/update/view projects)
+- visitor / visitor123 (view only)
+
+PUBLIC HOMEPAGE:
+- index.php - beautiful landing page with CTA button "Get Started"
+- Navbar with Login/Dashboard/Projects/Users/Logout (dynamic based on auth)
+
+VERIFICATION:
+- All pages load correctly
+- Login works for all users  
+- Role-based access control functioning
+- Session management working
+- Password verification working
+- Logout clears session
+
+FILES MODIFIED:
+- config.php (added isLocal() CLI check, moved settings before core.php require)
+- includes/core.php (moved ini_set before session_start)
+- includes/Security.php (removed redundant ini_set)
+- migrations/migration.sql (fixed password hashes)
+- index.php (complete rewrite - public homepage)
+- login.php (rewritten with core.php, CSRF, rate limiting)
+- dashboard.php (updated redirect to login.php)
+- All other protected pages (updated redirects)
+- Moved all files from pages/ to root
+
+TESTING:
+✓ Public homepage loads
+✓ Login page loads with CSRF token
+✓ Admin login successful -> dashboard
+✓ Handler login successful -> dashboard  
+✓ Logout clears session -> login page
+✓ Password verification works
+✓ Role-based permissions enforced
