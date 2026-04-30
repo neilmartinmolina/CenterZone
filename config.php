@@ -3,9 +3,9 @@
 
 require_once __DIR__ . "/vendor/autoload.php";
 
-// Load .env if available
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . "/../../");
-$dotenv->safeLoad();
+// Load .env if available. Prefer this project root, then support the legacy parent path.
+Dotenv\Dotenv::createImmutable(__DIR__)->safeLoad();
+Dotenv\Dotenv::createImmutable(__DIR__ . "/../../")->safeLoad();
 
 /**
  * Check if running on local environment

@@ -22,11 +22,18 @@ if (!hasPermission("create_project")) {
 
 $websiteName = trim($data["websiteName"] ?? "");
 $url = trim($data["url"] ?? "");
+$repoUrl = trim($data["repo_url"] ?? "");
+$repoName = extractRepoNameFromGitUrl($repoUrl);
 $version = trim($data["version"] ?? "1.0.0");
 $folderId = $data["folderId"] ?? null;
 
-if (empty($websiteName) || empty($url)) {
-    echo json_encode(["success" => false, "message" => "Website name and URL are required"]);
+if (empty($websiteName) || empty($url) || empty($repoUrl)) {
+    echo json_encode(["success" => false, "message" => "Website name, URL, and GitHub repo URL are required"]);
+    exit;
+}
+
+if (!validateGitRepoUrl($repoUrl) || empty($repoName)) {
+    echo json_encode(["success" => false, "message" => "GitHub repo URL must end with .git"]);
     exit;
 }
 
@@ -36,8 +43,8 @@ if (!Security::validateVersion($version)) {
 }
 
 try {
-    $stmt = $pdo->prepare("INSERT INTO websites (websiteName, url, currentVersion, status, folder_id, updatedBy, created_at, lastUpdatedAt) VALUES (?, ?, ?, 'updated', ?, ?, NOW(), NOW())");
-    $stmt->execute([$websiteName, $url, $version, $folderId, $_SESSION["userId"]]);
+    $stmt = $pdo->prepare("INSERT INTO websites (websiteName, url, repo_url, repo_name, currentVersion, status, folder_id, updatedBy, created_at, lastUpdatedAt) VALUES (?, ?, ?, ?, ?, 'updated', ?, ?, NOW(), NOW())");
+    $stmt->execute([$websiteName, $url, $repoUrl, $repoName, $version, $folderId, $_SESSION["userId"]]);
 
     $newId = $pdo->lastInsertId();
 

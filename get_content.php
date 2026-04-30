@@ -16,6 +16,9 @@ switch ($tab) {
     case "websites":
         require_once __DIR__ . "/websites_content.php";
         break;
+    case "project-form":
+        require_once __DIR__ . "/project_form.php";
+        break;
      case "folders":
          require_once __DIR__ . "/folders_content.php";
          break;

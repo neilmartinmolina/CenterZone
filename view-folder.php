@@ -193,12 +193,12 @@ if (!$isEmbedded):
                 </select>
 
                 <?php if (hasPermission("create_project")): ?>
-                <button id="openAddModal" class="inline-flex items-center justify-center gap-2 rounded-lg bg-cta px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-500">
+                <a href="dashboard.php?page=project-form&folderId=<?php echo urlencode((string) $folderId); ?>" class="inline-flex items-center justify-center gap-2 rounded-lg bg-cta px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-500">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                     </svg>
                     Add Project
-                </button>
+                </a>
                 <?php endif; ?>
             </div>
         </section>
@@ -236,7 +236,7 @@ if (!$isEmbedded):
                     </div>
                     <div class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Updated by</span>
-                        <span class="truncate font-medium text-slate-800"><?php echo htmlspecialchars($website["updatedByName"] ?? "Unknown"); ?></span>
+                        <span class="truncate font-medium text-slate-800"><?php echo htmlspecialchars(displayUpdatedBy($website)); ?></span>
                     </div>
                 </div>
 
@@ -261,54 +261,16 @@ if (!$isEmbedded):
             <p class="text-base font-medium text-slate-700">No projects found</p>
             <p class="mt-1 text-sm text-slate-500">Try another search or add a new project to this folder.</p>
             <?php if (hasPermission("create_project")): ?>
-            <button id="openAddModalEmpty" class="mt-5 inline-flex items-center justify-center gap-2 rounded-lg bg-cta px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500">
+            <a href="dashboard.php?page=project-form&folderId=<?php echo urlencode((string) $folderId); ?>" class="mt-5 inline-flex items-center justify-center gap-2 rounded-lg bg-cta px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
                 Add Project
-            </button>
+            </a>
             <?php endif; ?>
         </section>
     </div>
 
-    <div id="addModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-        <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
-            <div class="mb-5 flex items-start justify-between gap-4">
-                <div>
-                    <h3 class="text-lg font-semibold text-slate-900">Add New Project</h3>
-                    <p class="mt-1 text-sm text-slate-500">Create it inside <?php echo htmlspecialchars($folder["name"]); ?>.</p>
-                </div>
-                <button type="button" id="closeAddModalIcon" class="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
-                    <span class="sr-only">Close</span>
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                </button>
-            </div>
-            <form id="addProjectForm">
-                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
-                <input type="hidden" name="folderId" value="<?php echo $folderId; ?>">
-                <div class="space-y-4">
-                    <div>
-                        <label class="mb-1 block text-sm font-medium text-slate-700">Project Name *</label>
-                        <input type="text" name="websiteName" required class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20" placeholder="My Project">
-                    </div>
-                    <div>
-                        <label class="mb-1 block text-sm font-medium text-slate-700">URL *</label>
-                        <input type="url" name="url" required class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20" placeholder="https://example.com">
-                    </div>
-                    <div>
-                        <label class="mb-1 block text-sm font-medium text-slate-700">Version</label>
-                        <input type="text" name="version" value="1.0.0" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20" placeholder="1.0.0">
-                    </div>
-                </div>
-                <div class="mt-6 flex gap-3">
-                    <button type="button" id="closeAddModal" class="flex-1 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50">Cancel</button>
-                    <button type="submit" class="flex-1 rounded-lg bg-cta px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500">Create</button>
-                </div>
-            </form>
-        </div>
-    </div>
 </main>
 
 <script>
@@ -319,7 +281,6 @@ if (!$isEmbedded):
     const statusFilter = document.getElementById('statusFilter');
     const sortFilter = document.getElementById('sortFilter');
     const projectGrid = document.getElementById('projectGrid');
-    const addModal = document.getElementById('addModal');
 
     function filterAndSort() {
         const search = searchInput.value.toLowerCase();
@@ -345,16 +306,6 @@ if (!$isEmbedded):
         });
 
         emptyState.classList.toggle('hidden', filtered.length > 0);
-    }
-
-    function openModal() {
-        addModal.classList.remove('hidden');
-        addModal.classList.add('flex');
-    }
-
-    function closeModal() {
-        addModal.classList.add('hidden');
-        addModal.classList.remove('flex');
     }
 
     searchInput.addEventListener('input', filterAndSort);
@@ -397,35 +348,6 @@ if (!$isEmbedded):
         });
     });
 
-    document.getElementById('openAddModal')?.addEventListener('click', openModal);
-    document.getElementById('openAddModalEmpty')?.addEventListener('click', openModal);
-    document.getElementById('closeAddModal')?.addEventListener('click', closeModal);
-    document.getElementById('closeAddModalIcon')?.addEventListener('click', closeModal);
-    addModal.addEventListener('click', e => {
-        if (e.target === addModal) closeModal();
-    });
-
-    document.getElementById('addProjectForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const data = Object.fromEntries(formData.entries());
-
-        try {
-            const response = await fetch('handlers/create_website.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            const result = await response.json();
-            if (result.success) {
-                window.location.reload();
-            } else {
-                alert('Error: ' + result.message);
-            }
-        } catch (err) {
-            alert('Request failed: ' + err.message);
-        }
-    });
 })();
 </script>
 

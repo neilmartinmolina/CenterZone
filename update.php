@@ -14,12 +14,25 @@ validateCSRF($_POST["csrf_token"] ?? "");
 $websiteId = $_POST["websiteId"] ?? null;
 $version = trim($_POST["version"] ?? "");
 $status = $_POST["status"] ?? "";
+$repoUrl = trim($_POST["repo_url"] ?? "");
+$repoName = extractRepoNameFromGitUrl($repoUrl);
+$folderId = $_POST["folderId"] ?? null;
 $note = $_POST["note"] ?? "";
 $userId = $_SESSION["userId"];
 
 // Validate input
 if (empty($version)) {
     echo SweetAlert::error("Validation Error", "Version is required");
+    exit;
+}
+
+if (empty($repoUrl)) {
+    echo SweetAlert::error("Validation Error", "GitHub repo URL is required");
+    exit;
+}
+
+if (!validateGitRepoUrl($repoUrl) || empty($repoName)) {
+    echo SweetAlert::error("Validation Error", "GitHub repo URL must end with .git");
     exit;
 }
 
@@ -43,11 +56,11 @@ try {
     // Update website
     $update = $pdo->prepare("
         UPDATE websites 
-        SET currentVersion=?, status=?, lastUpdatedAt=NOW(), updatedBy=? 
+        SET currentVersion=?, status=?, repo_url=?, repo_name=?, folder_id=?, lastUpdatedAt=NOW(), updatedBy=? 
         WHERE websiteId=?
     ");
     
-    $update->execute([$version, $status, $userId, $websiteId]);
+    $update->execute([$version, $status, $repoUrl, $repoName, $folderId ?: null, $userId, $websiteId]);
     
     // Log update
     $log = $pdo->prepare("

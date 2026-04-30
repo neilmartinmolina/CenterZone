@@ -52,12 +52,60 @@ function hasPermission($permission) {
     return $roleManager->hasPermission($userId, $permission);
 }
 
+function validateGitRepoUrl($repoUrl) {
+    return is_string($repoUrl) && preg_match('/\.git$/i', trim($repoUrl));
+}
+
+function extractRepoNameFromGitUrl($repoUrl) {
+    $repoUrl = trim((string) $repoUrl);
+    $repoUrl = preg_replace('/\.git$/i', '', $repoUrl);
+    $repoUrl = rtrim($repoUrl, "/");
+    $repoName = basename($repoUrl);
+    return $repoName !== "." ? $repoName : "";
+}
+
+function githubHooksUrl($repoUrl) {
+    $repoUrl = preg_replace('/\.git$/i', '', trim((string) $repoUrl));
+    $parts = parse_url($repoUrl);
+    if (($parts["host"] ?? "") !== "github.com") {
+        return "";
+    }
+
+    $path = trim($parts["path"] ?? "", "/");
+    if (substr_count($path, "/") !== 1) {
+        return "";
+    }
+
+    return "https://github.com/" . $path . "/settings/hooks/new";
+}
+
+function projectWebhookUrl($websiteId = null) {
+    $baseUrl = rtrim(APP_URL ?: "", "/");
+    if ($baseUrl === "") {
+        $scheme = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off") ? "https" : "http";
+        $host = $_SERVER["HTTP_HOST"] ?? "localhost";
+        $baseUrl = $scheme . "://" . $host . rtrim(dirname($_SERVER["SCRIPT_NAME"] ?? "/"), "/\\");
+    }
+
+    $url = $baseUrl . "/webhook.php";
+    return $websiteId ? $url . "?websiteId=" . urlencode((string) $websiteId) : $url;
+}
+
+function displayUpdatedBy(array $row) {
+    return $row["github_updated_by"]
+        ?? $row["github_updated_by_username"]
+        ?? $row["updatedByName"]
+        ?? $row["fullName"]
+        ?? "Unknown";
+}
+
 // Redirect to login if not authenticated (only for protected pages via index.php routing)
 $currentFile = basename($_SERVER["PHP_SELF"]);
 $isIndexPhp = ($currentFile === "index.php");
 $isLoginPage = ($currentFile === "login.php" || $currentFile === "password_reset.php" || $currentFile === "password_reset_complete.php");
+$isPublicEndpoint = ($currentFile === "webhook.php" || $currentFile === "github-webhook.php");
 
-if (!$isIndexPhp && !$isLoginPage) {
+if (!$isIndexPhp && !$isLoginPage && !$isPublicEndpoint) {
     // Direct file access - redirect to index.php routing
     if (!isAuthenticated()) {
         header("Location: index.php?page=login");

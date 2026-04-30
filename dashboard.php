@@ -187,16 +187,33 @@ $currentUser = $stmt->fetch();
             });
         }
 
-        function loadPage(page, pushState = true) {
-            fetch('get_content.php?tab=' + page)
+        function runInlineScripts(scope = document) {
+            scope.querySelectorAll('script').forEach(script => {
+                const replacement = document.createElement('script');
+                Array.from(script.attributes).forEach(attr => replacement.setAttribute(attr.name, attr.value));
+                replacement.textContent = script.textContent;
+                script.replaceWith(replacement);
+            });
+        }
+
+        function loadPage(page, pushState = true, params = new URLSearchParams()) {
+            const fetchParams = new URLSearchParams(params);
+            fetchParams.set('tab', page);
+
+            fetch('get_content.php?' + fetchParams.toString())
                 .then(res => res.text())
                 .then(html => {
                     contentEl.innerHTML = html;
+                    runInlineScripts(contentEl);
                     initNucleusDataTables(contentEl);
-                    if (pushState) history.pushState({ page }, '', '?page=' + page);
+                    if (pushState) {
+                        const historyParams = new URLSearchParams(params);
+                        historyParams.set('page', page);
+                        history.pushState({ page }, '', '?' + historyParams.toString());
+                    }
                     updateActiveNav(page);
                     // Update page title
-                    const titles = { dashboard: 'Dashboard', websites: 'Websites', folders: 'Folders', usermanagement: 'User Management' };
+                    const titles = { dashboard: 'Dashboard', websites: 'Websites', folders: 'Folders', 'project-form': 'Project Setup', usermanagement: 'User Management' };
                     titleEl.textContent = titles[page] || 'Nucleus';
                 })
                 .catch(err => {
@@ -215,7 +232,7 @@ $currentUser = $stmt->fetch();
         // Initial load
         const urlParams = new URLSearchParams(window.location.search);
         const initialPage = urlParams.get('page') || 'dashboard';
-        loadPage(initialPage, false);
+        loadPage(initialPage, false, urlParams);
 
         // Nav clicks
         navLinks.forEach(link => {
@@ -227,8 +244,9 @@ $currentUser = $stmt->fetch();
 
         // Back/forward
         window.addEventListener('popstate', function(e) {
-            const page = new URLSearchParams(window.location.search).get('page') || 'dashboard';
-            loadPage(page, false);
+            const params = new URLSearchParams(window.location.search);
+            const page = params.get('page') || 'dashboard';
+            loadPage(page, false, params);
         });
 
         // Global handler for status-select buttons (dashboard "Mark updated")
