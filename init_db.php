@@ -1,4 +1,5 @@
 <?php
+define("NUCLEUS_SKIP_CORE_BOOTSTRAP", true);
 require_once "config.php";
 
 $host = DB_HOST;
@@ -7,7 +8,7 @@ $user = DB_USER;
 $pass = DB_PASS;
 $charset = "utf8mb4";
 
-$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+$dsn = "mysql:host=$host;charset=$charset";
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -19,51 +20,34 @@ try {
     die("DB connection failed: " . $e->getMessage());
 }
 
-// Read the migration file
-$migrationFile = "/path/to/codebase/migrations/migration.sql";
+// Read the normalized Nucleus schema file
+$migrationFile = __DIR__ . "/migrations/nucleus_3nf_schema.sql";
 
 if (!file_exists($migrationFile)) {
     echo "Migration file not found.\n";
     exit;
 }
 
-// Check if users table exists
-$tableCheck = $pdo->query("SHOW TABLES LIKE 'users'");
-if ($tableCheck->rowCount() == 0) {
-    // Create base users table first
-    $pdo->exec("CREATE TABLE users (
-        userId INT PRIMARY KEY AUTO_INCREMENT,
-        username VARCHAR(255) NOT NULL UNIQUE,
-        passwordHash VARCHAR(255) NOT NULL,
-        fullName VARCHAR(255)
-    )");
-    // Create base websites table  
-    $pdo->exec("CREATE TABLE websites (
-        websiteId INT PRIMARY KEY AUTO_INCREMENT,
-        websiteName VARCHAR(255) NOT NULL,
-        url VARCHAR(2048) NULL,
-        currentVersion VARCHAR(50),
-        status ENUM('updated', 'updating', 'issue') DEFAULT 'updated',
-        updatedBy INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        lastUpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
-    echo "Base tables created.\n";
-}
+try {
+    $pdo->exec("CREATE DATABASE IF NOT EXISTS `$db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+    $pdo->exec("USE `$db`");
 
-// Check if users table has role column
-$usersTableCheck = $pdo->query('SHOW COLUMNS FROM users LIKE "role"');
-if ($usersTableCheck->rowCount() == 0) {
-    // Apply migration
-    try {
-        $migration = file_get_contents($migrationFile);
-        $pdo->exec($migration);
-        echo "Database migration completed successfully!\n";
-    } catch (Exception $e) {
-        echo "Migration failed: " . $e->getMessage() . "\n";
+    $tableCheck = $pdo->query("SHOW TABLES LIKE 'users'");
+    if ($tableCheck->rowCount() > 0) {
+        $columnCheck = $pdo->query("SHOW COLUMNS FROM users LIKE 'userId'");
+        if ($columnCheck->rowCount() === 0) {
+            echo "The nucleus database already exists but does not match this app's 3NF schema.\n";
+            echo "Expected users.userId, but found another users table shape.\n";
+            echo "Use migrations/nucleus_3nf_schema.sql on a clean database, or migrate/rename the existing tables first.\n";
+            exit;
+        }
     }
-} else {
-    echo "Database already has role system.\n";
+
+    $migration = file_get_contents($migrationFile);
+    $pdo->exec($migration);
+    echo "Nucleus database schema initialized successfully!\n";
+} catch (Exception $e) {
+    echo "Schema initialization failed: " . $e->getMessage() . "\n";
 }
 ?>
 

@@ -1,14 +1,16 @@
--- Webhook auto-update support for Nucleus.
--- Run this once on the target MariaDB database.
+-- Webhook auto-update support for the normalized Nucleus schema.
+-- Run this only on databases that predate these webhook columns.
 
-ALTER TABLE websites
-    ADD COLUMN IF NOT EXISTS repo_url VARCHAR(2048) NULL AFTER url,
-    ADD COLUMN IF NOT EXISTS repo_name VARCHAR(255) NULL AFTER repo_url,
-    ADD COLUMN IF NOT EXISTS last_commit VARCHAR(64) NULL AFTER repo_name,
-    ADD COLUMN IF NOT EXISTS webhook_secret VARCHAR(255) NULL AFTER last_commit,
-    ADD COLUMN IF NOT EXISTS deploy_path VARCHAR(1024) NULL AFTER webhook_secret,
-    ADD COLUMN IF NOT EXISTS github_updated_by VARCHAR(255) NULL AFTER deploy_path,
-    ADD COLUMN IF NOT EXISTS github_updated_by_email VARCHAR(255) NULL AFTER github_updated_by,
-    ADD COLUMN IF NOT EXISTS github_updated_by_username VARCHAR(255) NULL AFTER github_updated_by_email;
+ALTER TABLE projects
+    ADD COLUMN IF NOT EXISTS github_repo_url VARCHAR(2048) NULL AFTER public_url,
+    ADD COLUMN IF NOT EXISTS github_repo_name VARCHAR(255) NULL AFTER github_repo_url,
+    ADD COLUMN IF NOT EXISTS deploy_path VARCHAR(2048) NULL AFTER github_repo_name,
+    ADD COLUMN IF NOT EXISTS webhook_secret VARCHAR(128) NULL AFTER deploy_path,
+    ADD COLUMN IF NOT EXISTS last_updated_at TIMESTAMP NULL AFTER updated_at;
 
-CREATE INDEX IF NOT EXISTS idx_websites_repo_name ON websites (repo_name);
+ALTER TABLE project_status
+    ADD COLUMN IF NOT EXISTS last_commit VARCHAR(255) NULL AFTER status,
+    ADD COLUMN IF NOT EXISTS status_note TEXT NULL AFTER last_commit,
+    ADD COLUMN IF NOT EXISTS checked_at TIMESTAMP NULL AFTER status_note;
+
+CREATE INDEX IF NOT EXISTS idx_projects_repo_name ON projects (github_repo_name);

@@ -1,0 +1,2 @@
+ALTER TABLE projects
+    ADD COLUMN IF NOT EXISTS saved_at TIMESTAMP NULL AFTER updated_at;

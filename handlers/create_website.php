@@ -42,14 +42,45 @@ if (!Security::validateVersion($version)) {
     exit;
 }
 
+$roleManager = new RoleManager($pdo);
+if (!empty($folderId) && !$roleManager->canAccessSubject($_SESSION["userId"], (int) $folderId)) {
+    echo json_encode(["success" => false, "message" => "You do not have access to that subject"]);
+    exit;
+}
+
 try {
-    $stmt = $pdo->prepare("INSERT INTO websites (websiteName, url, repo_url, repo_name, currentVersion, status, folder_id, updatedBy, created_at, lastUpdatedAt) VALUES (?, ?, ?, ?, ?, 'updated', ?, ?, NOW(), NOW())");
-    $stmt->execute([$websiteName, $url, $repoUrl, $repoName, $version, $folderId, $_SESSION["userId"]]);
+    $pdo->beginTransaction();
+    $stmt = $pdo->prepare("
+        INSERT INTO projects (project_name, public_url, github_repo_url, github_repo_name, current_version, subject_id, owner_id, created_at, updated_at, saved_at, last_updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW(), NULL)
+    ");
+    $stmt->execute([$websiteName, $url, $repoUrl, $repoName, $version, $folderId ?: null, $_SESSION["userId"]]);
 
     $newId = $pdo->lastInsertId();
+    $stmt = $pdo->prepare("INSERT INTO project_status (project_id, status, updated_by, checked_at) VALUES (?, 'working', ?, NOW())");
+    $stmt->execute([$newId, $_SESSION["userId"]]);
+    $stmt = $pdo->prepare("INSERT INTO project_members (project_id, userId, member_role, added_by) VALUES (?, ?, 'owner', ?)");
+    $stmt->execute([$newId, $_SESSION["userId"], $_SESSION["userId"]]);
+    $subjectNote = "No subject";
+    if (!empty($folderId)) {
+        $subjectStmt = $pdo->prepare("SELECT subject_code FROM subjects WHERE subject_id = ?");
+        $subjectStmt->execute([$folderId]);
+        $subjectNote = $subjectStmt->fetchColumn() ?: $subjectNote;
+    }
+    $stmt = $pdo->prepare("INSERT INTO activity_logs (project_id, userId, action, version, note) VALUES (?, ?, 'project_created', ?, ?)");
+    $stmt->execute([$newId, $_SESSION["userId"], $version, "Project created in {$subjectNote}"]);
+    $pdo->commit();
 
-    // Fetch the newly created website with user name
-    $stmt = $pdo->prepare("SELECT w.*, u.fullName as updatedByName FROM websites w LEFT JOIN users u ON w.updatedBy = u.userId WHERE w.websiteId = ?");
+    // Fetch the newly created project with aliases used by existing card JavaScript.
+    $stmt = $pdo->prepare("
+        SELECT p.project_id AS websiteId, p.project_name AS websiteName, p.public_url AS url,
+               p.current_version AS currentVersion, p.last_updated_at AS lastUpdatedAt,
+               ps.updated_by AS updatedBy, u.fullName as updatedByName
+        FROM projects p
+        LEFT JOIN project_status ps ON ps.project_id = p.project_id
+        LEFT JOIN users u ON ps.updated_by = u.userId
+        WHERE p.project_id = ?
+    ");
     $stmt->execute([$newId]);
     $website = $stmt->fetch();
 
@@ -73,11 +104,11 @@ try {
 
     $statusLabel = computeStatus($website["lastUpdatedAt"]);
     if ($statusLabel === "Up to date") {
-        $statusClass = "badge-updated";
+        $statusClass = "badge-working";
     } elseif ($statusLabel === "Needs update") {
-        $statusClass = "badge-updating";
+        $statusClass = "badge-building";
     } else {
-        $statusClass = "badge-issue";
+        $statusClass = "badge-error";
     }
 
     // Return HTML for the new card (to be inserted)
@@ -113,5 +144,8 @@ try {
     ]);
 
 } catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     echo json_encode(["success" => false, "message" => "Database error: " . $e->getMessage()]);
 }

@@ -43,7 +43,7 @@ if ($isAuthenticated) {
         </div>
         <div class="space-x-4">
             <a href="login.php" class="bg-accent text-black px-6 py-2 rounded-lg font-medium">Login</a>
-            <button class="bg-cta px-6 py-2 rounded-lg font-medium">Try Nucleus Free →</button>
+            <a href="signup.php" class="bg-cta px-6 py-2 rounded-lg font-medium">Try Nucleus Free →</a>
         </div>
     </nav>
 

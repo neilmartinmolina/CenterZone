@@ -3,8 +3,8 @@ require_once __DIR__ . "/includes/db.php";
 
 header("Content-Type: application/json");
 
-const WEBHOOK_STATUS_UPDATED = "updated";
-const WEBHOOK_STATUS_ISSUE = "issue";
+const WEBHOOK_STATUS_UPDATED = "working";
+const WEBHOOK_STATUS_ISSUE = "error";
 
 function respond(int $statusCode, array $payload): void
 {
@@ -90,42 +90,28 @@ function runCommand(string $command, ?int &$exitCode = null): string
 
 function updateWebsiteStatus(PDO $pdo, int $websiteId, string $status, ?string $lastCommit, string $note, array $githubUser = []): void
 {
-    $hasLastCommit = columnExists($pdo, "websites", "last_commit");
-    $hasGithubUpdatedBy = columnExists($pdo, "websites", "github_updated_by");
-    $hasGithubUpdatedByEmail = columnExists($pdo, "websites", "github_updated_by_email");
-    $hasGithubUpdatedByUsername = columnExists($pdo, "websites", "github_updated_by_username");
     $systemUserId = getSystemUserId($pdo);
 
-    $setParts = ["status = ?", "lastUpdatedAt = NOW()", "updatedBy = ?"];
-    $params = [$status, $systemUserId];
+    $stmt = $pdo->prepare("
+        INSERT INTO project_status (project_id, status, last_commit, status_note, updated_by, checked_at)
+        VALUES (?, ?, ?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+            status = VALUES(status),
+            last_commit = VALUES(last_commit),
+            status_note = VALUES(status_note),
+            updated_by = VALUES(updated_by),
+            checked_at = VALUES(checked_at)
+    ");
+    $stmt->execute([$websiteId, $status, $lastCommit, $note, $systemUserId]);
 
-    if ($hasLastCommit && $lastCommit !== null) {
-        array_unshift($setParts, "last_commit = ?");
-        array_unshift($params, $lastCommit);
-    }
+    $stmt = $pdo->prepare("UPDATE projects SET last_updated_at = NOW(), updated_at = NOW() WHERE project_id = ?");
+    $stmt->execute([$websiteId]);
 
-    if ($hasGithubUpdatedBy) {
-        $setParts[] = "github_updated_by = ?";
-        $params[] = $githubUser["name"] ?? null;
-    }
-
-    if ($hasGithubUpdatedByEmail) {
-        $setParts[] = "github_updated_by_email = ?";
-        $params[] = $githubUser["email"] ?? null;
-    }
-
-    if ($hasGithubUpdatedByUsername) {
-        $setParts[] = "github_updated_by_username = ?";
-        $params[] = $githubUser["username"] ?? null;
-    }
-
-    $params[] = $websiteId;
-    $stmt = $pdo->prepare("UPDATE websites SET " . implode(", ", $setParts) . " WHERE websiteId = ?");
-    $stmt->execute($params);
-
-    if ($systemUserId !== null && columnExists($pdo, "updateLogs", "updatedBy")) {
+    if ($systemUserId !== null) {
         $version = $lastCommit ? substr($lastCommit, 0, 12) : "webhook";
-        $stmt = $pdo->prepare("INSERT INTO updateLogs (websiteId, version, note, updatedBy) VALUES (?, ?, ?, ?)");
+        $actor = $githubUser["username"] ?? $githubUser["name"] ?? "GitHub";
+        $stmt = $pdo->prepare("INSERT INTO activity_logs (project_id, version, note, userId, action) VALUES (?, ?, ?, ?, 'webhook_update')");
+        $note = $note . " by " . $actor;
         $stmt->execute([$websiteId, $version, $note, $systemUserId]);
     }
 }
@@ -149,47 +135,40 @@ if (!is_array($data)) {
 
 $repoName = $data["repository"]["name"] ?? "";
 $fullRepoName = $data["repository"]["full_name"] ?? "";
-$requestedWebsiteId = isset($_GET["websiteId"]) && is_numeric($_GET["websiteId"]) ? (int) $_GET["websiteId"] : null;
+$requestedWebsiteId = isset($_GET["projectId"]) && is_numeric($_GET["projectId"]) ? (int) $_GET["projectId"] : null;
+if (!$requestedWebsiteId && isset($_GET["websiteId"]) && is_numeric($_GET["websiteId"])) {
+    $requestedWebsiteId = (int) $_GET["websiteId"];
+}
 
 if ($repoName === "" && $fullRepoName === "") {
     respond(400, ["success" => false, "message" => "Repository name missing"]);
 }
 
 try {
-    $hasWebhookSecret = columnExists($pdo, "websites", "webhook_secret");
-    $hasRepoName = columnExists($pdo, "websites", "repo_name");
-
-    if (!$hasWebhookSecret || !$hasRepoName) {
-        respond(500, ["success" => false, "message" => "Webhook columns are not installed"]);
-    }
-
-    $selectColumns = "websiteId, websiteName, repo_name, webhook_secret";
-    if (columnExists($pdo, "websites", "deploy_path")) {
-        $selectColumns .= ", deploy_path";
-    }
+    $selectColumns = "project_id AS websiteId, project_name AS websiteName, github_repo_name AS repo_name, webhook_secret, deploy_path";
 
     if ($requestedWebsiteId) {
         $stmt = $pdo->prepare("
             SELECT {$selectColumns}
-            FROM websites
-            WHERE websiteId = ?
-              AND (repo_name = ? OR repo_name = ?)
-            ORDER BY websiteId ASC
+            FROM projects
+            WHERE project_id = ?
+              AND (github_repo_name = ? OR github_repo_name = ?)
+            ORDER BY project_id ASC
         ");
         $stmt->execute([$requestedWebsiteId, $repoName, $fullRepoName]);
     } else {
         $stmt = $pdo->prepare("
             SELECT {$selectColumns}
-            FROM websites
-            WHERE repo_name = ? OR repo_name = ?
-            ORDER BY websiteId ASC
+            FROM projects
+            WHERE github_repo_name = ? OR github_repo_name = ?
+            ORDER BY project_id ASC
         ");
         $stmt->execute([$repoName, $fullRepoName]);
     }
     $matches = $stmt->fetchAll();
 
     if (!$matches) {
-        respond(404, ["success" => false, "message" => "No website is configured for this repository"]);
+        respond(404, ["success" => false, "message" => "No project is configured for this repository"]);
     }
 
     $website = null;
@@ -258,7 +237,7 @@ try {
     respond(200, [
         "success" => true,
         "message" => "Repository pulled successfully",
-        "websiteId" => (int) $website["websiteId"],
+        "projectId" => (int) $website["websiteId"],
         "repo" => $fullRepoName ?: $repoName,
         "commit" => $commitHash,
         "output" => $pullOutput,

@@ -8,6 +8,7 @@ if (!isAuthenticated()) {
 
 $websiteId = isset($_GET["websiteId"]) && is_numeric($_GET["websiteId"]) ? (int) $_GET["websiteId"] : null;
 $isEdit = $websiteId !== null;
+$roleManager = new RoleManager($pdo);
 
 if ($isEdit && !hasPermission("update_project")) {
     echo "<div class=\"p-8 text-center\"><p class=\"text-slate-600\">You do not have permission to edit projects.</p></div>";
@@ -19,7 +20,7 @@ if (!$isEdit && !hasPermission("create_project")) {
     exit;
 }
 
-$folders = $pdo->query("SELECT * FROM folders ORDER BY name ASC")->fetchAll();
+$folders = $roleManager->getUserSubjects($_SESSION["userId"]);
 generateCSRFToken();
 $website = [
     "websiteName" => "",
@@ -28,12 +29,25 @@ $website = [
     "repo_name" => "",
     "webhook_secret" => bin2hex(random_bytes(32)),
     "currentVersion" => "1.0.0",
-    "status" => "updated",
+    "status" => "working",
     "folder_id" => $_GET["folderId"] ?? "",
 ];
 
 if ($isEdit) {
-    $stmt = $pdo->prepare("SELECT * FROM websites WHERE websiteId = ?");
+    if (!$roleManager->canAccessProject($_SESSION["userId"], $websiteId)) {
+        echo "<div class=\"p-8 text-center\"><p class=\"text-slate-600\">Project not found or access denied.</p></div>";
+        exit;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT p.project_id AS websiteId, p.project_name AS websiteName, p.public_url AS url,
+               p.github_repo_url AS repo_url, p.github_repo_name AS repo_name,
+               p.webhook_secret, p.current_version AS currentVersion,
+               COALESCE(ps.status, 'working') AS status, p.subject_id AS folder_id
+        FROM projects p
+        LEFT JOIN project_status ps ON ps.project_id = p.project_id
+        WHERE p.project_id = ?
+    ");
     $stmt->execute([$websiteId]);
     $existing = $stmt->fetch();
     if (!$existing) {
@@ -47,6 +61,8 @@ if ($isEdit) {
 }
 
 $error = null;
+$success = null;
+$isAjaxRequest = ($_SERVER["HTTP_X_REQUESTED_WITH"] ?? "") === "XMLHttpRequest";
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     validateCSRF($_POST["csrf_token"] ?? "");
@@ -68,16 +84,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $error = "Webhook secret is required.";
     } elseif (!Security::validateVersion($website["currentVersion"])) {
         $error = "Version must be in format like 1.0.0 or v1.0.0.";
-    } elseif (!in_array($website["status"], ["updated", "updating", "issue"], true)) {
+    } elseif (!in_array($website["status"], ["working", "building", "error"], true)) {
         $error = "Invalid status selected.";
+    } elseif (!empty($website["folder_id"]) && !$roleManager->canAccessSubject($_SESSION["userId"], (int) $website["folder_id"])) {
+        $error = "You do not have access to that subject.";
     } else {
         try {
+            $pdo->beginTransaction();
             if ($isEdit) {
                 $stmt = $pdo->prepare("
-                    UPDATE websites
-                    SET websiteName = ?, url = ?, repo_url = ?, repo_name = ?, webhook_secret = ?,
-                        currentVersion = ?, status = ?, folder_id = ?, updatedBy = ?, lastUpdatedAt = NOW()
-                    WHERE websiteId = ?
+                    UPDATE projects
+                    SET project_name = ?, public_url = ?, github_repo_url = ?, github_repo_name = ?, webhook_secret = ?,
+                        current_version = ?, subject_id = ?, saved_at = NOW(), updated_at = NOW()
+                    WHERE project_id = ?
                 ");
                 $stmt->execute([
                     $website["websiteName"],
@@ -86,16 +105,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $website["repo_name"],
                     $website["webhook_secret"],
                     $website["currentVersion"],
-                    $website["status"],
                     $website["folder_id"] ?: null,
-                    $_SESSION["userId"],
                     $websiteId,
                 ]);
+
+                $stmt = $pdo->prepare("
+                    INSERT INTO project_status (project_id, status, updated_by, checked_at)
+                    VALUES (?, ?, ?, NOW())
+                    ON DUPLICATE KEY UPDATE status = VALUES(status), updated_by = VALUES(updated_by), checked_at = VALUES(checked_at)
+                ");
+                $stmt->execute([$websiteId, $website["status"], $_SESSION["userId"]]);
             } else {
                 $stmt = $pdo->prepare("
-                    INSERT INTO websites
-                        (websiteName, url, repo_url, repo_name, webhook_secret, currentVersion, status, folder_id, updatedBy, created_at, lastUpdatedAt)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    INSERT INTO projects
+                        (project_name, public_url, github_repo_url, github_repo_name, webhook_secret, current_version, subject_id, owner_id, created_at, updated_at, saved_at, last_updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW(), NULL)
                 ");
                 $stmt->execute([
                     $website["websiteName"],
@@ -104,16 +128,38 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $website["repo_name"],
                     $website["webhook_secret"],
                     $website["currentVersion"],
-                    $website["status"],
                     $website["folder_id"] ?: null,
                     $_SESSION["userId"],
                 ]);
                 $websiteId = (int) $pdo->lastInsertId();
+
+                $stmt = $pdo->prepare("INSERT INTO project_members (project_id, userId, member_role, added_by) VALUES (?, ?, 'owner', ?)");
+                $stmt->execute([$websiteId, $_SESSION["userId"], $_SESSION["userId"]]);
+
+                $stmt = $pdo->prepare("INSERT INTO project_status (project_id, status, updated_by, checked_at) VALUES (?, ?, ?, NOW())");
+                $stmt->execute([$websiteId, $website["status"], $_SESSION["userId"]]);
             }
 
-            header("Location: dashboard.php?page=project-form&websiteId=" . $websiteId . "&saved=1");
-            exit;
+            $stmt = $pdo->prepare("INSERT INTO activity_logs (project_id, userId, action, version, note) VALUES (?, ?, ?, ?, ?)");
+            $subjectNote = "No subject";
+            if (!empty($website["folder_id"])) {
+                $subjectStmt = $pdo->prepare("SELECT subject_code FROM subjects WHERE subject_id = ?");
+                $subjectStmt->execute([$website["folder_id"]]);
+                $subjectNote = $subjectStmt->fetchColumn() ?: $subjectNote;
+            }
+            $stmt->execute([$websiteId, $_SESSION["userId"], $isEdit ? "project_updated" : "project_created", $website["currentVersion"], "Project saved in {$subjectNote}"]);
+
+            $pdo->commit();
+            $success = "Project saved. The webhook toolkit is ready to use.";
+            $isEdit = true;
+            if (!$isAjaxRequest) {
+                header("Location: dashboard.php?page=project-form&websiteId=" . $websiteId . "&saved=1");
+                exit;
+            }
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             $error = "Failed to save project: " . $e->getMessage();
         }
     }
@@ -138,10 +184,13 @@ if ($websiteId) {
 </div>
 
 <?php if (isset($_GET["saved"])): ?>
-<div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">Project saved. The webhook toolkit below is ready to use.</div>
+<div data-feedback="success" data-feedback-title="Project saved" data-feedback-message="Project saved. The webhook toolkit is ready to use." class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">Project saved. The webhook toolkit below is ready to use.</div>
+<?php endif; ?>
+<?php if ($success): ?>
+<div data-feedback="success" data-feedback-title="Project saved" data-feedback-message="<?php echo htmlspecialchars($success); ?>" class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700"><?php echo htmlspecialchars($success); ?></div>
 <?php endif; ?>
 <?php if ($error): ?>
-<div class="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"><?php echo htmlspecialchars($error); ?></div>
+<div data-feedback="error" data-feedback-title="Project not saved" data-feedback-message="<?php echo htmlspecialchars($error); ?>" class="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"><?php echo htmlspecialchars($error); ?></div>
 <?php endif; ?>
 
 <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -167,17 +216,17 @@ if ($websiteId) {
       <div>
         <label class="mb-1 block text-sm font-medium text-slate-700">Status</label>
         <select name="status" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20">
-          <?php foreach (["updated" => "Updated", "updating" => "Updating", "issue" => "Issue"] as $value => $label): ?>
+          <?php foreach (["working" => "Working", "building" => "Building", "error" => "Error"] as $value => $label): ?>
           <option value="<?php echo $value; ?>" <?php echo $website["status"] === $value ? "selected" : ""; ?>><?php echo $label; ?></option>
           <?php endforeach; ?>
         </select>
       </div>
       <div>
-        <label class="mb-1 block text-sm font-medium text-slate-700">Folder</label>
+        <label class="mb-1 block text-sm font-medium text-slate-700">Subject</label>
         <select name="folderId" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20">
-          <option value="">No Folder</option>
+          <option value="">No Subject</option>
           <?php foreach ($folders as $folder): ?>
-          <option value="<?php echo $folder["id"]; ?>" <?php echo (string) $website["folder_id"] === (string) $folder["id"] ? "selected" : ""; ?>><?php echo htmlspecialchars($folder["name"]); ?></option>
+          <option value="<?php echo $folder["subject_id"]; ?>" <?php echo (string) $website["folder_id"] === (string) $folder["subject_id"] ? "selected" : ""; ?>><?php echo htmlspecialchars($folder["subject_code"] . " - " . $folder["subject_name"]); ?></option>
           <?php endforeach; ?>
         </select>
       </div>

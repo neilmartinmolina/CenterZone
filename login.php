@@ -21,13 +21,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $error = "Too many login attempts. Please wait before trying again.";
     } else {
         // Sanitize input
-        $username = Security::sanitizeInput($_POST["username"]);
+        $login = trim((string) ($_POST["login"] ?? ($_POST["username"] ?? "")));
         $password = $_POST["password"];
         
         // Validate input
         $errors = [];
-        if (empty($username) || strlen($username) < 3 || strlen($username) > 50) {
-            $errors[] = "Username must be between 3 and 50 characters";
+        if ($login === "" || strlen($login) > 255) {
+            $errors[] = "Enter your username or email address";
         }
         if (empty($password)) {
             $errors[] = "Password is required";
@@ -36,8 +36,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if (empty($errors)) {
             // Use prepared statement for login
             try {
-                $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ?");
-                $stmt->execute([$username]);
+                $stmt = $pdo->prepare("
+                    SELECT u.*, r.role_name AS role
+                    FROM users u
+                    JOIN roles r ON r.role_id = u.role_id
+                    WHERE u.username = ? OR u.email = ?
+                ");
+                $stmt->execute([$login, $login]);
                 $user = $stmt->fetch();
                 
                 if ($user && Security::verifyPassword($password, $user["passwordHash"])) {
@@ -50,7 +55,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     
                     // Log successful login
                     $stmt = $pdo->prepare("INSERT INTO login_attempts (username, ip_address, success, created_at) VALUES (?, ?, 1, NOW())");
-                    $stmt->execute([$username, $_SERVER["REMOTE_ADDR"]]);
+                    $stmt->execute([$user["username"], $_SERVER["REMOTE_ADDR"]]);
                     
                     // Regenerate session ID
                     session_regenerate_id(true);
@@ -60,7 +65,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 } else {
                     // Log failed login
                     $stmt = $pdo->prepare("INSERT INTO login_attempts (username, ip_address, success, created_at) VALUES (?, ?, 0, NOW())");
-                    $stmt->execute([$username, $_SERVER["REMOTE_ADDR"]]);
+                    $stmt->execute([$login, $_SERVER["REMOTE_ADDR"]]);
                     
                     $error = "Invalid username or password";
                 }
@@ -103,11 +108,11 @@ generateCSRFToken();
             <?php endif; ?>
             
             <form method="POST">
-                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                 
                 <div class="mb-3">
-                    <label class="form-label">Username</label>
-                    <input type="text" name="username" class="form-control" placeholder="Enter username" required autofocus>
+                    <label class="form-label">Username or Email</label>
+                    <input type="text" name="login" class="form-control" placeholder="Enter username or email" required autofocus>
                 </div>
                 
                 <div class="mb-4">
@@ -119,6 +124,11 @@ generateCSRFToken();
                     <i class="bi bi-box-arrow-in-right"></i> Login
                 </button>
             </form>
+
+            <div class="d-flex justify-content-between align-items-center mt-3 small">
+                <a href="password_reset.php" class="text-decoration-none">Forgot password?</a>
+                <a href="signup.php" class="fw-semibold text-decoration-none">Create account</a>
+            </div>
             
         </div>
     </div>

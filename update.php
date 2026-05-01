@@ -43,7 +43,9 @@ if (!Security::validateVersion($version)) {
 }
 
 // Validate status
-$validStatuses = ["updated", "updating", "issue"];
+$statusMap = ["updated" => "working", "updating" => "building", "issue" => "error", "working" => "working", "building" => "building", "error" => "error"];
+$status = $statusMap[$status] ?? $status;
+$validStatuses = ["working", "building", "error"];
 if (!in_array($status, $validStatuses)) {
     echo SweetAlert::error("Validation Error", "Invalid status selected");
     exit;
@@ -52,32 +54,46 @@ if (!in_array($status, $validStatuses)) {
 // Use prepared statements for update
 try {
     $pdo->beginTransaction();
+    $roleManager = new RoleManager($pdo);
+    if (!$roleManager->canAccessProject($userId, (int) $websiteId)) {
+        throw new Exception("Project access denied");
+    }
+    if (!empty($folderId) && !$roleManager->canAccessSubject($userId, (int) $folderId)) {
+        throw new Exception("Subject access denied");
+    }
     
-    // Update website
+    // Update project
     $update = $pdo->prepare("
-        UPDATE websites 
-        SET currentVersion=?, status=?, repo_url=?, repo_name=?, folder_id=?, lastUpdatedAt=NOW(), updatedBy=? 
-        WHERE websiteId=?
+        UPDATE projects
+        SET current_version = ?, github_repo_url = ?, github_repo_name = ?, subject_id = ?, saved_at = NOW(), updated_at = NOW()
+        WHERE project_id = ?
     ");
     
-    $update->execute([$version, $status, $repoUrl, $repoName, $folderId ?: null, $userId, $websiteId]);
+    $update->execute([$version, $repoUrl, $repoName, $folderId ?: null, $websiteId]);
+
+    $statusUpdate = $pdo->prepare("
+        INSERT INTO project_status (project_id, status, updated_by, checked_at)
+        VALUES (?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE status = VALUES(status), updated_by = VALUES(updated_by), checked_at = VALUES(checked_at)
+    ");
+    $statusUpdate->execute([$websiteId, $status, $userId]);
     
     // Log update
     $log = $pdo->prepare("
-        INSERT INTO updateLogs (websiteId, version, note, updatedBy)
-        VALUES (?,?,?,?)
+        INSERT INTO activity_logs (project_id, version, note, userId, action)
+        VALUES (?,?,?,?, 'project_updated')
     ");
     
     $log->execute([$websiteId, $version, $note, $userId]);
     
     $pdo->commit();
     
-    echo SweetAlert::success("Success", "Website updated successfully", "dashboard.php");
+    echo SweetAlert::success("Success", "Project updated successfully", "dashboard.php");
     exit;
     
 } catch (Exception $e) {
     $pdo->rollBack();
-    echo SweetAlert::error("Database Error", "Failed to update website");
-    error_log("Website update error: " . $e->getMessage());
+    echo SweetAlert::error("Database Error", "Failed to update project");
+    error_log("Project update error: " . $e->getMessage());
 }
 

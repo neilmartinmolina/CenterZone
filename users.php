@@ -35,34 +35,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Create user
             $passwordHash = password_hash($password, PASSWORD_DEFAULT);
             $stmt = $pdo->prepare("
-                INSERT INTO users (username, passwordHash, fullName, role)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO users (username, passwordHash, fullName, role_id)
+                SELECT ?, ?, ?, role_id FROM roles WHERE role_name = ?
             ");
             $stmt->execute([$username, $passwordHash, $fullName, $role]);
-            
-            // Assign default permissions based on role
-            $userId = $pdo->lastInsertId();
-            $permissions = [];
-            
-            switch ($role) {
-                case "admin":
-                    $permissions = ["create_project", "update_project", "delete_project", "manage_users", "manage_groups", "view_projects"];
-                    break;
-                case "handler":
-                    $permissions = ["create_project", "update_project", "view_projects"];
-                    break;
-                case "visitor":
-                    $permissions = ["view_projects"];
-                    break;
-            }
-            
-            foreach ($permissions as $permission) {
-                $stmt = $pdo->prepare("
-                    INSERT INTO user_permissions (userId, permission_type)
-                    VALUES (?, ?)
-                ");
-                $stmt->execute([$userId, $permission]);
-            }
             
             header("Location: users.php");
             exit;
@@ -72,11 +48,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 // Get all users
 $users = $pdo->query("
-    SELECT u.*, 
-           (SELECT COUNT(*) FROM user_permissions WHERE userId = u.userId) as permission_count
+    SELECT u.*, r.role_name AS role
     FROM users u
+    JOIN roles r ON r.role_id = u.role_id
     ORDER BY u.username ASC
 ")->fetchAll();
+$roleManager = new RoleManager($pdo);
 
 generateCSRFToken();
 ?>
@@ -163,7 +140,7 @@ generateCSRFToken();
                                     <?= ucfirst($user["role"]) ?>
                                 </span>
                             </td>
-                            <td><?= $user["permission_count"] ?> permissions</td>
+                            <td><?= count($roleManager->getUserPermissions($user["userId"])) ?> role permissions</td>
                             <td><?= date("Y-m-d", strtotime($user["created_at"] ?? "now")) ?></td>
                         </tr>
                         <?php endforeach; ?>

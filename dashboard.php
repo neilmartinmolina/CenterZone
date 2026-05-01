@@ -9,9 +9,15 @@ if (!isAuthenticated()) {
 
 // Get user info
 $userId = $_SESSION["userId"];
-$stmt = $pdo->prepare("SELECT * FROM users WHERE userId = ?");
+$stmt = $pdo->prepare("
+    SELECT u.*, r.role_name AS role
+    FROM users u
+    JOIN roles r ON r.role_id = u.role_id
+    WHERE u.userId = ?
+");
 $stmt->execute([$userId]);
 $currentUser = $stmt->fetch();
+generateCSRFToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -92,18 +98,32 @@ $currentUser = $stmt->fetch();
                     <svg class="w-5 h-5 inline-block mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
                     Dashboard
                 </a>
-                <a href="?page=websites" class="nav-item block px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-navy transition relative" data-page="websites">
-                    <svg class="w-5 h-5 inline-block mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
-                    Websites
-                </a>
                 <a href="?page=folders" class="nav-item block px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-navy transition relative" data-page="folders">
                     <svg class="w-5 h-5 inline-block mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                    Folders
+                    Subjects
+                </a>
+                <a href="?page=websites" class="nav-item block px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-navy transition relative" data-page="websites">
+                    <svg class="w-5 h-5 inline-block mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
+                    Projects
                 </a>
                 <?php if (hasPermission("manage_users")): ?>
                 <a href="?page=usermanagement" class="nav-item block px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-navy transition relative" data-page="usermanagement">
                     <svg class="w-5 h-5 inline-block mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
                     Users
+                </a>
+                <?php endif; ?>
+                <a href="?page=requests" class="nav-item block px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-navy transition relative" data-page="requests">
+                    <svg class="w-5 h-5 inline-block mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h8M8 14h5m8-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Requests
+                </a>
+                <a href="?page=settings" class="nav-item block px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-navy transition relative" data-page="settings">
+                    <svg class="w-5 h-5 inline-block mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.607 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    Settings
+                </a>
+                <?php if (hasPermission("view_activity_logs")): ?>
+                <a href="?page=logs" class="nav-item block px-4 py-3 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-navy transition relative" data-page="logs">
+                    <svg class="w-5 h-5 inline-block mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    Logs
                 </a>
                 <?php endif; ?>
             </nav>
@@ -119,6 +139,9 @@ $currentUser = $stmt->fetch();
                         <p class="text-xs text-slate-500 truncate"><?php echo htmlspecialchars($currentUser['role'] ?? 'user'); ?></p>
                     </div>
                 </div>
+                <p class="mt-3 text-xs leading-5 text-slate-500">
+                    Privacy notice: Nucleus uses account and project data only for academic project tracking. Public views limit personal information.
+                </p>
             </div>
         </aside>
 
@@ -143,6 +166,7 @@ $currentUser = $stmt->fetch();
 
     <script src="https://cdn.datatables.net/2.3.8/js/dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/2.3.8/js/dataTables.tailwindcss.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <!-- JavaScript for AJAX navigation -->
     <script>
@@ -183,7 +207,26 @@ $currentUser = $stmt->fetch();
                     options.columnDefs = [{ targets: 'no-sort', orderable: false, searchable: false }];
                 }
 
-                new DataTable(table, options);
+                const externalSearch = table.id ? scope.querySelector(`[data-table-search="#${table.id}"]`) : null;
+                if (externalSearch) {
+                    options.layout = {
+                        topStart: 'pageLength',
+                        topEnd: null,
+                        bottomStart: 'info',
+                        bottomEnd: 'paging'
+                    };
+                }
+
+                const dataTable = new DataTable(table, options);
+                table.nucleusDataTable = dataTable;
+                if (externalSearch) {
+                    externalSearch.addEventListener('input', function() {
+                        dataTable.search(this.value).draw();
+                    });
+                    if (externalSearch.value) {
+                        dataTable.search(externalSearch.value).draw();
+                    }
+                }
             });
         }
 
@@ -196,6 +239,65 @@ $currentUser = $stmt->fetch();
             });
         }
 
+        function pageTitles(page) {
+            return { dashboard: 'Dashboard', folders: 'Subjects', websites: 'Projects', 'project-form': 'Project Setup', usermanagement: 'Users', requests: 'Requests', settings: 'Settings', logs: 'Logs' }[page] || 'Nucleus';
+        }
+
+        function showFeedback(scope = document) {
+            const feedback = scope.querySelector('[data-feedback]');
+            if (!feedback || !window.Swal) return;
+
+            Swal.fire({
+                icon: feedback.dataset.feedback || 'info',
+                title: feedback.dataset.feedbackTitle || (feedback.dataset.feedback === 'error' ? 'Something went wrong' : 'Saved'),
+                text: feedback.dataset.feedbackMessage || feedback.textContent.trim(),
+                confirmButtonColor: '#3085d6'
+            });
+        }
+
+        function renderContent(page, html) {
+            contentEl.innerHTML = html;
+            runInlineScripts(contentEl);
+            initNucleusDataTables(contentEl);
+            updateActiveNav(page);
+            titleEl.textContent = pageTitles(page);
+            showFeedback(contentEl);
+        }
+
+        function runExternalTableSearch(input) {
+            const selector = input.dataset.tableSearch;
+            if (!selector) return;
+
+            const table = contentEl.querySelector(selector);
+            if (!table) return;
+
+            const dataTable = table.nucleusDataTable;
+            if (dataTable) {
+                dataTable.search(input.value).draw();
+                return;
+            }
+
+            const query = input.value.trim().toLowerCase();
+            table.querySelectorAll('tbody tr').forEach(row => {
+                row.classList.toggle('hidden', query !== '' && !row.textContent.toLowerCase().includes(query));
+            });
+        }
+
+        function runSubjectSearch(input) {
+            const cards = Array.from(contentEl.querySelectorAll('[data-subject-card]'));
+            const empty = contentEl.querySelector('#subjectEmptyState');
+            const query = input.value.trim().toLowerCase();
+            let visible = 0;
+
+            cards.forEach(card => {
+                const matches = !query || (card.dataset.searchText || '').includes(query);
+                card.classList.toggle('hidden', !matches);
+                if (matches) visible++;
+            });
+
+            if (empty) empty.classList.toggle('hidden', visible !== 0);
+        }
+
         function loadPage(page, pushState = true, params = new URLSearchParams()) {
             const fetchParams = new URLSearchParams(params);
             fetchParams.set('tab', page);
@@ -203,18 +305,12 @@ $currentUser = $stmt->fetch();
             fetch('get_content.php?' + fetchParams.toString())
                 .then(res => res.text())
                 .then(html => {
-                    contentEl.innerHTML = html;
-                    runInlineScripts(contentEl);
-                    initNucleusDataTables(contentEl);
+                    renderContent(page, html);
                     if (pushState) {
                         const historyParams = new URLSearchParams(params);
                         historyParams.set('page', page);
                         history.pushState({ page }, '', '?' + historyParams.toString());
                     }
-                    updateActiveNav(page);
-                    // Update page title
-                    const titles = { dashboard: 'Dashboard', websites: 'Websites', folders: 'Folders', 'project-form': 'Project Setup', usermanagement: 'User Management' };
-                    titleEl.textContent = titles[page] || 'Nucleus';
                 })
                 .catch(err => {
                     contentEl.innerHTML = '<div class="p-8 text-red-600">Failed to load page.</div>';
@@ -254,7 +350,15 @@ $currentUser = $stmt->fetch();
             const btn = e.target.closest('.status-select');
             if (!btn) return;
             const websiteId = btn.dataset.websiteId;
-            if (!confirm('Mark this project as updated? Version will be incremented automatically.')) return;
+            const confirmation = await Swal.fire({
+                icon: 'question',
+                title: 'Mark this project as updated?',
+                text: 'Version will be incremented automatically.',
+                showCancelButton: true,
+                confirmButtonText: 'Update',
+                confirmButtonColor: '#3085d6'
+            });
+            if (!confirmation.isConfirmed) return;
 
             try {
                 const response = await fetch('handlers/update_website.php', {
@@ -268,13 +372,92 @@ $currentUser = $stmt->fetch();
                 });
                 const result = await response.json();
                 if (result.success) {
-                    alert('Project marked as updated!');
+                    await Swal.fire({ icon: 'success', title: 'Project marked as updated', confirmButtonColor: '#3085d6' });
                     window.location.reload();
                 } else {
-                    alert('Error: ' + result.message);
+                    Swal.fire({ icon: 'error', title: 'Update failed', text: result.message, confirmButtonColor: '#3085d6' });
                 }
             } catch (err) {
-                alert('Request failed: ' + err.message);
+                Swal.fire({ icon: 'error', title: 'Request failed', text: err.message, confirmButtonColor: '#3085d6' });
+            }
+        });
+
+        contentEl.addEventListener('submit', async function(e) {
+            const form = e.target.closest('form');
+            if (!form) return;
+
+            if (form.dataset.confirm && !form.dataset.confirmed) {
+                e.preventDefault();
+                const confirmation = await Swal.fire({
+                    icon: 'warning',
+                    title: form.dataset.confirmTitle || 'Are you sure?',
+                    text: form.dataset.confirm,
+                    showCancelButton: true,
+                    confirmButtonText: form.dataset.confirmButton || 'Continue',
+                    confirmButtonColor: '#3085d6'
+                });
+                if (confirmation.isConfirmed) {
+                    form.dataset.confirmed = '1';
+                    form.requestSubmit();
+                }
+                return;
+            }
+
+            const action = new URL(form.action || window.location.href, window.location.href);
+            if (!action.pathname.endsWith('/get_content.php')) return;
+
+            e.preventDefault();
+            const params = new URLSearchParams(action.search);
+            const page = params.get('tab') || new URLSearchParams(window.location.search).get('page') || 'dashboard';
+
+            try {
+                const response = await fetch(action.toString(), {
+                    method: form.method || 'POST',
+                    body: new FormData(form),
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const html = await response.text();
+                renderContent(page, html);
+
+                const historyParams = new URLSearchParams(window.location.search);
+                historyParams.set('page', page);
+                params.forEach((value, key) => {
+                    if (key !== 'tab') historyParams.set(key, value);
+                });
+                history.pushState({ page }, '', '?' + historyParams.toString());
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Request failed', text: err.message, confirmButtonColor: '#3085d6' });
+            }
+        });
+
+        contentEl.addEventListener('input', function(e) {
+            const input = e.target.closest('[data-table-search]');
+            if (input) {
+                runExternalTableSearch(input);
+                return;
+            }
+
+            const subjectSearch = e.target.closest('[data-subject-search]');
+            if (subjectSearch) {
+                runSubjectSearch(subjectSearch);
+            }
+        });
+
+        contentEl.addEventListener('click', async function(e) {
+            const link = e.target.closest('a[data-confirm]');
+            if (!link) return;
+
+            e.preventDefault();
+            const confirmation = await Swal.fire({
+                icon: 'warning',
+                title: link.dataset.confirmTitle || 'Are you sure?',
+                text: link.dataset.confirm,
+                showCancelButton: true,
+                confirmButtonText: link.dataset.confirmButton || 'Continue',
+                confirmButtonColor: '#3085d6'
+            });
+            if (confirmation.isConfirmed) {
+                window.location.href = link.href;
             }
         });
 

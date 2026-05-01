@@ -3,22 +3,22 @@
 class SweetAlert {
     // Show success message
     public static function success($title, $message = '', $redirect = '') {
-        self::showAlert('success', $title, $message, $redirect);
+        return self::showAlert('success', $title, $message, $redirect);
     }
     
     // Show error message
     public static function error($title, $message = '', $redirect = '') {
-        self::showAlert('error', $title, $message, $redirect);
+        return self::showAlert('error', $title, $message, $redirect);
     }
     
     // Show warning message
     public static function warning($title, $message = '', $redirect = '') {
-        self::showAlert('warning', $title, $message, $redirect);
+        return self::showAlert('warning', $title, $message, $redirect);
     }
     
     // Show info message
     public static function info($title, $message = '', $redirect = '') {
-        self::showAlert('info', $title, $message, $redirect);
+        return self::showAlert('info', $title, $message, $redirect);
     }
     
     // Show confirmation dialog
@@ -61,15 +61,18 @@ class SweetAlert {
         ];
         
         $icon = $typeMap[$type] ?? 'info';
-        $redirectScript = $redirect ? "window.location.href = '$redirect';" : '';
+        $iconJson = json_encode($icon);
+        $titleJson = json_encode($title);
+        $messageJson = json_encode($message);
+        $redirectScript = $redirect ? "window.location.href = " . json_encode($redirect) . ";" : '';
         
         $script = "
             <script src='https://cdn.jsdelivr.net/npm/sweetalert2@11'></script>
             <script>
                 Swal.fire({
-                    icon: '$icon',
-                    title: '$title',
-                    text: '$message',
+                    icon: {$iconJson},
+                    title: {$titleJson},
+                    text: {$messageJson},
                     timer: 3000,
                     showConfirmButton: true,
                     confirmButtonText: 'OK',

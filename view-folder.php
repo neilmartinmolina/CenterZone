@@ -3,38 +3,60 @@ require_once __DIR__ . "/config.php";
 
 if (!hasPermission("view_projects")) {
     http_response_code(401);
-    echo "<div class=\"p-8 text-center\"><p class=\"text-slate-600\">Access Denied - You do not have permission to view folders</p></div>";
+    echo "<div class=\"p-8 text-center\"><p class=\"text-slate-600\">Access Denied - You do not have permission to view subjects</p></div>";
     exit;
 }
 
 $folderId = $_GET["folderId"] ?? null;
 if (!$folderId || !is_numeric($folderId)) {
     http_response_code(400);
-    echo "<div class=\"p-8 text-center\"><p class=\"text-slate-600\">Invalid request - no folder specified</p></div>";
+    echo "<div class=\"p-8 text-center\"><p class=\"text-slate-600\">Invalid request - no subject specified</p></div>";
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT * FROM folders WHERE id = ?");
+$stmt = $pdo->prepare("SELECT subject_id AS id, subject_code AS name, description, created_by FROM subjects WHERE subject_id = ?");
 $stmt->execute([$folderId]);
 $folder = $stmt->fetch();
 
 if (!$folder) {
     http_response_code(404);
-    echo "<div class=\"p-8 text-center\"><p class=\"text-slate-600\">Folder not found</p></div>";
+    echo "<div class=\"p-8 text-center\"><p class=\"text-slate-600\">Subject not found</p></div>";
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT w.*, u.fullName as updatedByName FROM websites w LEFT JOIN users u ON w.updatedBy = u.userId WHERE w.folder_id = ? ORDER BY w.websiteName ASC");
-$stmt->execute([$folderId]);
+$roleManager = new RoleManager($pdo);
+if (!$roleManager->canAccessSubject($_SESSION["userId"], (int) $folderId)) {
+    http_response_code(403);
+    echo "<div class=\"p-8 text-center\"><p class=\"text-slate-600\">You do not have access to this subject.</p></div>";
+    exit;
+}
+[$accessWhere, $accessParams] = $roleManager->projectAccessSql("p");
+$subjectWhere = $accessWhere ? $accessWhere . " AND p.subject_id = ?" : " WHERE p.subject_id = ?";
+$stmt = $pdo->prepare("
+    SELECT p.project_id AS websiteId, p.project_name AS websiteName, p.public_url AS url,
+           p.current_version AS currentVersion, p.last_updated_at AS lastUpdatedAt,
+           ps.updated_by AS updatedBy, u.fullName as updatedByName
+    FROM projects p
+    LEFT JOIN project_status ps ON ps.project_id = p.project_id
+    LEFT JOIN users u ON ps.updated_by = u.userId
+    {$subjectWhere}
+    ORDER BY p.project_name ASC
+");
+$stmt->execute(array_merge($accessParams, [$folderId]));
 $websites = $stmt->fetchAll();
 
 $totalProjects = count($websites);
 
-$updatedThisWeek = $pdo->prepare("SELECT COUNT(*) as c FROM websites WHERE folder_id = ? AND lastUpdatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)");
+$updatedThisWeek = $pdo->prepare("SELECT COUNT(*) as c FROM projects WHERE subject_id = ? AND last_updated_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)");
 $updatedThisWeek->execute([$folderId]);
 $updatedThisWeek = $updatedThisWeek->fetch()["c"];
 
-$needsUpdate = $pdo->prepare("SELECT COUNT(*) as c FROM websites WHERE folder_id = ? AND (status IN ('updating','issue') OR lastUpdatedAt < DATE_SUB(CURDATE(), INTERVAL 15 DAY))");
+$needsUpdate = $pdo->prepare("
+    SELECT COUNT(*) as c
+    FROM projects p
+    LEFT JOIN project_status ps ON ps.project_id = p.project_id
+    WHERE p.subject_id = ? AND (ps.status IN ('building','error') OR p.last_updated_at < DATE_SUB(CURDATE(), INTERVAL 15 DAY))
+");
 $needsUpdate->execute([$folderId]);
 $needsUpdate = $needsUpdate->fetch()["c"];
 
@@ -81,7 +103,7 @@ if (!$isEmbedded):
     <div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <a href="dashboard.php?page=dashboard" class="text-xl font-bold tracking-tight text-navy">NUCLEUS</a>
         <nav class="flex items-center gap-4 text-sm">
-            <a href="dashboard.php?page=folders" class="font-medium text-slate-600 transition-colors hover:text-navy">Folders</a>
+            <a href="dashboard.php?page=folders" class="font-medium text-slate-600 transition-colors hover:text-navy">Subjects</a>
             <a href="logout.php" class="font-medium text-slate-500 transition-colors hover:text-navy">Logout</a>
         </nav>
     </div>
@@ -97,7 +119,7 @@ if (!$isEmbedded):
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"></path>
                         </svg>
-                        Folders
+                        Subjects
                     </a>
                     <span>/</span>
                     <span class="truncate"><?php echo htmlspecialchars($folder["name"]); ?></span>
@@ -114,11 +136,11 @@ if (!$isEmbedded):
             </div>
 
             <?php if (hasPermission("manage_groups")): ?>
-            <a href="delete-folder.php?id=<?php echo $folder["id"]; ?>" onclick="return confirm('Delete this folder and unlink all projects?')" class="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-100">
+            <a href="delete-folder.php?id=<?php echo $folder["id"]; ?>" data-confirm="Projects will be unlinked but not deleted." data-confirm-title="Delete this subject?" data-confirm-button="Delete" class="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-100">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                 </svg>
-                Delete Folder
+                Delete Subject
             </a>
             <?php endif; ?>
         </div>
@@ -235,6 +257,7 @@ if (!$isEmbedded):
                     </div>
                 </div>
 
+                <?php if (hasPermission("update_project")): ?>
                 <div class="mt-auto pt-5">
                     <button class="mark-updated inline-flex w-full items-center justify-center gap-2 rounded-lg bg-navy px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-navy/90" data-website-id="<?php echo $website["websiteId"]; ?>">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -243,6 +266,7 @@ if (!$isEmbedded):
                         Mark Updated
                     </button>
                 </div>
+                <?php endif; ?>
             </article>
             <?php endforeach; ?>
         </section>
@@ -254,7 +278,7 @@ if (!$isEmbedded):
                 </svg>
             </div>
             <p class="text-base font-medium text-slate-700">No projects found</p>
-            <p class="mt-1 text-sm text-slate-500">Try another search or add a new project to this folder.</p>
+            <p class="mt-1 text-sm text-slate-500">Try another search or add a new project to this subject.</p>
             <?php if (hasPermission("create_project")): ?>
             <a href="dashboard.php?page=project-form&folderId=<?php echo urlencode((string) $folderId); ?>" class="mt-5 inline-flex items-center justify-center gap-2 rounded-lg bg-cta px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -311,7 +335,15 @@ if (!$isEmbedded):
     document.querySelectorAll('.mark-updated').forEach(btn => {
         btn.addEventListener('click', async function() {
             const websiteId = this.dataset.websiteId;
-            if (!confirm('Mark this project as updated? Version will be auto-incremented.')) return;
+            const confirmation = await Swal.fire({
+                icon: 'question',
+                title: 'Mark this project as updated?',
+                text: 'Version will be auto-incremented.',
+                showCancelButton: true,
+                confirmButtonText: 'Update',
+                confirmButtonColor: '#3085d6'
+            });
+            if (!confirmation.isConfirmed) return;
 
             try {
                 const response = await fetch('handlers/update_website.php', {
@@ -333,12 +365,12 @@ if (!$isEmbedded):
                     card.dataset.updated = Math.floor(Date.now() / 1000);
                     card.querySelector('.project-time').textContent = 'Just now';
                     filterAndSort();
-                    alert('Project updated!');
+                    Swal.fire({ icon: 'success', title: 'Project updated', confirmButtonColor: '#3085d6' });
                 } else {
-                    alert('Error: ' + result.message);
+                    Swal.fire({ icon: 'error', title: 'Update failed', text: result.message, confirmButtonColor: '#3085d6' });
                 }
             } catch (err) {
-                alert('Request failed: ' + err.message);
+                Swal.fire({ icon: 'error', title: 'Request failed', text: err.message, confirmButtonColor: '#3085d6' });
             }
         });
     });

@@ -79,7 +79,7 @@ function githubHooksUrl($repoUrl) {
     return "https://github.com/" . $path . "/settings/hooks/new";
 }
 
-function projectWebhookUrl($websiteId = null) {
+function projectWebhookUrl($projectId = null) {
     $baseUrl = rtrim(APP_URL ?: "", "/");
     if ($baseUrl === "") {
         $scheme = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off") ? "https" : "http";
@@ -88,10 +88,39 @@ function projectWebhookUrl($websiteId = null) {
     }
 
     $url = $baseUrl . "/webhook.php";
-    return $websiteId ? $url . "?websiteId=" . urlencode((string) $websiteId) : $url;
+    return $projectId ? $url . "?projectId=" . urlencode((string) $projectId) : $url;
+}
+
+function ensureProjectSavedAtColumn(PDO $pdo): void {
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+    $checked = true;
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'projects'
+              AND COLUMN_NAME = 'saved_at'
+        ");
+        $stmt->execute();
+        if ((int) $stmt->fetchColumn() === 0) {
+            $pdo->exec("ALTER TABLE projects ADD COLUMN saved_at TIMESTAMP NULL AFTER updated_at");
+        }
+    } catch (Throwable $e) {
+        error_log("Project saved_at column check failed: " . $e->getMessage());
+    }
 }
 
 function displayUpdatedBy(array $row) {
+    $role = $_SESSION["role"] ?? "visitor";
+    if (!in_array($role, ["admin", "handler"], true)) {
+        return "Project contributor";
+    }
+
     return $row["github_updated_by"]
         ?? $row["github_updated_by_username"]
         ?? $row["updatedByName"]
@@ -118,10 +147,26 @@ function formatNucleusDateTime($datetime) {
     return $date->format("Y-m-d");
 }
 
+function logActivity($action, $note = null, $projectId = null, $version = null, $userId = null) {
+    global $pdo;
+
+    try {
+        $actorId = $userId ?? ($_SESSION["userId"] ?? null);
+        $ipAddress = $_SERVER["REMOTE_ADDR"] ?? null;
+        $stmt = $pdo->prepare("
+            INSERT INTO activity_logs (project_id, userId, action, version, note, ip_address)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([$projectId, $actorId, $action, $version, $note, $ipAddress]);
+    } catch (Throwable $e) {
+        error_log("Activity log failed: " . $e->getMessage());
+    }
+}
+
 // Redirect to login if not authenticated (only for protected pages via index.php routing)
 $currentFile = basename($_SERVER["PHP_SELF"]);
 $isIndexPhp = ($currentFile === "index.php");
-$isLoginPage = ($currentFile === "login.php" || $currentFile === "password_reset.php" || $currentFile === "password_reset_complete.php");
+$isLoginPage = ($currentFile === "login.php" || $currentFile === "signup.php" || $currentFile === "password_reset.php" || $currentFile === "password_reset_complete.php");
 $isPublicEndpoint = ($currentFile === "webhook.php" || $currentFile === "github-webhook.php");
 
 if (!$isIndexPhp && !$isLoginPage && !$isPublicEndpoint) {
@@ -131,3 +176,5 @@ if (!$isIndexPhp && !$isLoginPage && !$isPublicEndpoint) {
         exit;
     }
 }
+
+ensureProjectSavedAtColumn($pdo);

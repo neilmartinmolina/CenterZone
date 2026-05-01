@@ -15,9 +15,8 @@ if (!$userId) {
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT permission_type FROM user_permissions WHERE userId = ?");
-$stmt->execute([$userId]);
-$permissions = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+$roleManager = new RoleManager($pdo);
+$permissions = $roleManager->getUserPermissions($userId);
 
 echo json_encode($permissions);
 ?>

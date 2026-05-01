@@ -13,20 +13,29 @@ switch ($tab) {
     case "dashboard":
         require_once __DIR__ . "/dashboard_content.php";
         break;
+    case "folders":
+        require_once __DIR__ . "/folders_content.php";
+        break;
     case "websites":
         require_once __DIR__ . "/websites_content.php";
         break;
     case "project-form":
         require_once __DIR__ . "/project_form.php";
         break;
-     case "folders":
-         require_once __DIR__ . "/folders_content.php";
-         break;
     case "view-folder":
         require_once __DIR__ . "/view-folder.php";
         break;
     case "usermanagement":
         require_once __DIR__ . "/usermanagement_content.php";
+        break;
+    case "requests":
+        require_once __DIR__ . "/requests_content.php";
+        break;
+    case "settings":
+        require_once __DIR__ . "/settings_content.php";
+        break;
+    case "logs":
+        require_once __DIR__ . "/activity_log.php";
         break;
     default:
         require_once __DIR__ . "/dashboard_content.php";

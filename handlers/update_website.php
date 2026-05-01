@@ -23,45 +23,61 @@ if (!$websiteId || !$status) {
     exit;
 }
 
-$validStatuses = ["updated", "updating", "issue"];
+$statusMap = [
+    "updated" => "working",
+    "updating" => "building",
+    "issue" => "error",
+    "working" => "working",
+    "building" => "building",
+    "error" => "error",
+];
+$status = $statusMap[$status] ?? $status;
+$validStatuses = ["working", "building", "error"];
 if (!in_array($status, $validStatuses)) {
     echo json_encode(["success" => false, "message" => "Invalid status"]);
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT * FROM websites WHERE websiteId = ?");
+$stmt = $pdo->prepare("SELECT * FROM projects WHERE project_id = ?");
 $stmt->execute([$websiteId]);
 $website = $stmt->fetch();
 
 if (!$website) {
-    echo json_encode(["success" => false, "message" => "Website not found"]);
+    echo json_encode(["success" => false, "message" => "Project not found"]);
     exit;
 }
 
-if (!hasPermission("update_project")) {
+$roleManager = new RoleManager($pdo);
+if (!hasPermission("update_project") || !$roleManager->canAccessProject($_SESSION["userId"], (int) $websiteId)) {
     echo json_encode(["success" => false, "message" => "Permission denied"]);
     exit;
 }
 
 try {
-    $stmt = $pdo->prepare("UPDATE websites SET status = ?, lastUpdatedAt = NOW(), updatedBy = ? WHERE websiteId = ?");
-    $stmt->execute([$status, $_SESSION["userId"], $websiteId]);
-    
-    if ($status === "updated") {
-        $versionParts = explode(".", $website["currentVersion"]);
+    $stmt = $pdo->prepare("
+        INSERT INTO project_status (project_id, status, updated_by, checked_at)
+        VALUES (?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE status = VALUES(status), updated_by = VALUES(updated_by), checked_at = VALUES(checked_at)
+    ");
+    $stmt->execute([$websiteId, $status, $_SESSION["userId"]]);
+
+    if ($status === "working") {
+        $versionParts = explode(".", $website["current_version"]);
         $versionParts[count($versionParts) - 1] = (string)((int)$versionParts[count($versionParts) - 1] + 1);
         $newVersion = implode(".", $versionParts);
         
-        $stmt = $pdo->prepare("UPDATE websites SET currentVersion = ? WHERE websiteId = ?");
+        $stmt = $pdo->prepare("UPDATE projects SET current_version = ? WHERE project_id = ?");
         $stmt->execute([$newVersion, $websiteId]);
     } else {
-        $newVersion = $website["currentVersion"];
+        $stmt = $pdo->prepare("UPDATE projects SET updated_at = NOW() WHERE project_id = ?");
+        $stmt->execute([$websiteId]);
+        $newVersion = $website["current_version"];
     }
     
-    $stmt = $pdo->prepare("INSERT INTO updateLogs (websiteId, version, note, updatedBy) VALUES (?, ?, ?, ?)");
-    $stmt->execute([$websiteId, $newVersion, "Status changed to " . $status, $_SESSION["userId"]]);
+    $stmt = $pdo->prepare("INSERT INTO activity_logs (project_id, version, note, userId, action) VALUES (?, ?, ?, ?, 'status_changed')");
+    $stmt->execute([$websiteId, $newVersion, "Manually toggled update status to " . $status . " for " . $website["project_name"], $_SESSION["userId"]]);
     
-    $stmt = $pdo->prepare("SELECT currentVersion, lastUpdatedAt FROM websites WHERE websiteId = ?");
+    $stmt = $pdo->prepare("SELECT current_version, last_updated_at FROM projects WHERE project_id = ?");
     $stmt->execute([$websiteId]);
     $updated = $stmt->fetch();
     
@@ -69,8 +85,8 @@ try {
         "success" => true,
         "message" => "Status updated",
         "data" => [
-            "currentVersion" => $updated["currentVersion"],
-            "lastUpdatedAt" => $updated["lastUpdatedAt"]
+            "currentVersion" => $updated["current_version"],
+            "lastUpdatedAt" => $updated["last_updated_at"]
         ]
     ]);
 } catch (Exception $e) {

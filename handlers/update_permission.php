@@ -25,14 +25,10 @@ if (!$userId || !$permission) {
 }
 
 try {
-    if ($granted) {
-        $stmt = $pdo->prepare("INSERT IGNORE INTO user_permissions (userId, permission_type) VALUES (?, ?)");
-        $stmt->execute([$userId, $permission]);
-    } else {
-        $stmt = $pdo->prepare("DELETE FROM user_permissions WHERE userId = ? AND permission_type = ?");
-        $stmt->execute([$userId, $permission]);
-    }
-    echo json_encode(["success" => true]);
+    echo json_encode([
+        "success" => false,
+        "message" => "Individual permissions were removed. Change the user's role instead."
+    ]);
 } catch (Exception $e) {
     echo json_encode(["success" => false, "message" => "Database error"]);
 }

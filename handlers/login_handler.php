@@ -1,7 +1,7 @@
 <?php
 // Login Handler - Contains all login logic
 require_once __DIR__ . '/../includes/core.php';
-require_once __DIR__ . '/../ErrorHandler.php';
+require_once __DIR__ . '/../includes/ErrorHandler.php';
 
 $errorHandler = new ErrorHandler($pdo);
 
@@ -15,14 +15,14 @@ function loginUser($username, $password) {
         }
         
         // Sanitize input
-        $username = Security::sanitizeInput($username);
+        $username = trim((string) $username);
         $password = $password;
         
         // Validate input
         $errors = $errorHandler->validateInput([
             'username' => $username
         ], [
-            'username' => ['required' => true, 'min_length' => 3, 'max_length' => 50]
+            'username' => ['required' => true, 'min_length' => 3, 'max_length' => 255]
         ]);
         
         if (!empty($errors)) {
@@ -30,8 +30,13 @@ function loginUser($username, $password) {
         }
         
         // Check user credentials
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ?");
-        $stmt->execute([$username]);
+        $stmt = $pdo->prepare("
+            SELECT u.*, r.role_name AS role
+            FROM users u
+            JOIN roles r ON r.role_id = u.role_id
+            WHERE u.username = ? OR u.email = ?
+        ");
+        $stmt->execute([$username, $username]);
         $user = $stmt->fetch();
         
         if ($user && Security::verifyPassword($password, $user["passwordHash"])) {
@@ -40,7 +45,7 @@ function loginUser($username, $password) {
                 INSERT INTO login_attempts (username, ip_address, created_at, success)
                 VALUES (?, ?, 1, NOW())
             ");
-            $stmt->execute([$username, $_SERVER['REMOTE_ADDR']]);
+            $stmt->execute([$user["username"], $_SERVER['REMOTE_ADDR']]);
             
             // Set session data
             $_SESSION["userId"] = $user["userId"];
@@ -48,6 +53,7 @@ function loginUser($username, $password) {
             $_SESSION["role"] = $user["role"];
             $_SESSION["user_logged_in"] = true;
             $_SESSION["login_time"] = time();
+            $_SESSION["last_activity"] = time();
             
             // Regenerate session ID
             session_regenerate_id(true);

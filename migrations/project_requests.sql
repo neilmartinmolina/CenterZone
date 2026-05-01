@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS project_requests (
+    request_id INT PRIMARY KEY AUTO_INCREMENT,
+    requested_by INT NOT NULL,
+    subject_id INT NOT NULL,
+    project_name VARCHAR(255) NOT NULL,
+    public_url VARCHAR(2048) NOT NULL,
+    github_repo_url VARCHAR(2048) NOT NULL,
+    github_repo_name VARCHAR(255) NULL,
+    requested_version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
+    message TEXT NULL,
+    status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+    reviewed_by INT NULL,
+    reviewed_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (requested_by) REFERENCES users(userId) ON DELETE CASCADE,
+    FOREIGN KEY (subject_id) REFERENCES subjects(subject_id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewed_by) REFERENCES users(userId) ON DELETE SET NULL,
+    INDEX idx_project_requests_status (status),
+    INDEX idx_project_requests_subject_status (subject_id, status),
+    INDEX idx_project_requests_requested_by (requested_by)
+);
