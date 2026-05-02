@@ -178,7 +178,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             ]);
             $projectId = (int) $pdo->lastInsertId();
 
-            $stmt = $pdo->prepare("INSERT INTO project_status (project_id, status, updated_by, checked_at) VALUES (?, 'working', ?, NOW())");
+            $stmt = $pdo->prepare("INSERT INTO project_status (project_id, status, updated_by, checked_at) VALUES (?, 'initializing', ?, NOW())");
             $stmt->execute([$projectId, $_SESSION["userId"]]);
 
             $stmt = $pdo->prepare("INSERT INTO project_members (project_id, userId, member_role, added_by) VALUES (?, ?, 'owner', ?)");

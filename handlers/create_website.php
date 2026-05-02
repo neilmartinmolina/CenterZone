@@ -57,7 +57,7 @@ try {
     $stmt->execute([$websiteName, $url, $repoUrl, $repoName, $version, $folderId ?: null, $_SESSION["userId"]]);
 
     $newId = $pdo->lastInsertId();
-    $stmt = $pdo->prepare("INSERT INTO project_status (project_id, status, updated_by, checked_at) VALUES (?, 'working', ?, NOW())");
+    $stmt = $pdo->prepare("INSERT INTO project_status (project_id, status, updated_by, checked_at) VALUES (?, 'initializing', ?, NOW())");
     $stmt->execute([$newId, $_SESSION["userId"]]);
     $stmt = $pdo->prepare("INSERT INTO project_members (project_id, userId, member_role, added_by) VALUES (?, ?, 'owner', ?)");
     $stmt->execute([$newId, $_SESSION["userId"], $_SESSION["userId"]]);
@@ -75,7 +75,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT p.project_id AS websiteId, p.project_name AS websiteName, p.public_url AS url,
                p.current_version AS currentVersion, p.last_updated_at AS lastUpdatedAt,
-               ps.updated_by AS updatedBy, u.fullName as updatedByName
+               COALESCE(ps.status, 'initializing') AS deployStatus, ps.updated_by AS updatedBy, u.fullName as updatedByName
         FROM projects p
         LEFT JOIN project_status ps ON ps.project_id = p.project_id
         LEFT JOIN users u ON ps.updated_by = u.userId
@@ -85,7 +85,10 @@ try {
     $website = $stmt->fetch();
 
     // Compute display fields (status label, relative time)
-    function computeStatus($lastUpdatedAt) {
+    function computeStatus($lastUpdatedAt, $deployStatus = "deployed") {
+        if (in_array($deployStatus, ["initializing", "building", "error"], true)) {
+            return ucfirst($deployStatus);
+        }
         if (!$lastUpdatedAt) return "30d+ old";
         $diffDays = (new DateTime())->diff(new DateTime($lastUpdatedAt))->days;
         if ($diffDays <= 14) return "Up to date";
@@ -102,10 +105,12 @@ try {
         return $diff->d . "d ago";
     }
 
-    $statusLabel = computeStatus($website["lastUpdatedAt"]);
-    if ($statusLabel === "Up to date") {
-        $statusClass = "badge-working";
-    } elseif ($statusLabel === "Needs update") {
+    $statusLabel = computeStatus($website["lastUpdatedAt"], $website["deployStatus"]);
+    if ($statusLabel === "Initializing") {
+        $statusClass = "badge-initializing";
+    } elseif ($statusLabel === "Up to date") {
+        $statusClass = "badge-deployed";
+    } elseif ($statusLabel === "Needs update" || $statusLabel === "Building") {
         $statusClass = "badge-building";
     } else {
         $statusClass = "badge-error";

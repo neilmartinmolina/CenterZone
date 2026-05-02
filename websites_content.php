@@ -35,7 +35,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["csrf_token"])) {
             ");
             $stmt->execute([$websiteName, $url, $repoUrl, $repoName, $version, $folderId ?: null, $_SESSION["userId"]]);
             $projectId = (int) $pdo->lastInsertId();
-            $stmt = $pdo->prepare("INSERT INTO project_status (project_id, status, updated_by, checked_at) VALUES (?, 'working', ?, NOW())");
+            $stmt = $pdo->prepare("INSERT INTO project_status (project_id, status, updated_by, checked_at) VALUES (?, 'initializing', ?, NOW())");
             $stmt->execute([$projectId, $_SESSION["userId"]]);
             $stmt = $pdo->prepare("INSERT INTO project_members (project_id, userId, member_role, added_by) VALUES (?, ?, 'owner', ?)");
             $stmt->execute([$projectId, $_SESSION["userId"], $_SESSION["userId"]]);
@@ -88,7 +88,7 @@ if (isset($_GET["unlist"]) && hasPermission("update_project")) {
 
 [$accessWhere, $accessParams] = $roleManager->projectAccessSql("p");
 $stmt = $pdo->prepare("
-    SELECT p.*, ps.status, ps.updated_by AS updatedBy, u.fullName, s.subject_code AS folderName
+    SELECT p.*, ps.status, ps.status_note, ps.updated_by AS updatedBy, u.fullName, s.subject_code AS folderName
     FROM projects p
     LEFT JOIN project_status ps ON ps.project_id = p.project_id
     LEFT JOIN users u ON ps.updated_by = u.userId
@@ -139,7 +139,7 @@ $folders = $roleManager->getUserSubjects($_SESSION["userId"]);
           <td class="py-4 pl-6 pr-4 font-medium text-slate-800"><?php echo htmlspecialchars($w["project_name"]); ?></td>
           <td class="py-4 pr-4 text-sm text-slate-600"><?php echo htmlspecialchars($w["folderName"] ?? "—"); ?></td>
           <td class="py-4 pr-4"><span class="px-2 py-1 rounded bg-blue-50 text-blue-700 text-sm font-medium"><?php echo htmlspecialchars($w["current_version"]); ?></span></td>
-          <td class="py-4 pr-4"><span class="px-2 py-1 rounded text-sm font-medium badge-<?php echo htmlspecialchars($w["status"] ?? "working"); ?>"><?php echo ucfirst(htmlspecialchars($w["status"] ?? "working")); ?></span></td>
+          <td class="py-4 pr-4"><span title="<?php echo htmlspecialchars($w["status_note"] ?? ""); ?>" class="px-2 py-1 rounded text-sm font-medium badge-<?php echo htmlspecialchars($w["status"] ?? "initializing"); ?>"><?php echo ucfirst(htmlspecialchars($w["status"] ?? "initializing")); ?></span></td>
           <td class="py-4 pr-4 text-sm text-slate-600"><?php echo htmlspecialchars(displayUpdatedBy($w)); ?></td>
           <td class="py-4 pr-4 text-sm text-slate-500"><?php echo htmlspecialchars(formatNucleusDateTime($w["last_updated_at"])); ?></td>
           <td class="py-4 pr-4 text-sm text-slate-500"><?php echo htmlspecialchars(formatNucleusDateTime($w["saved_at"] ?? $w["created_at"])); ?></td>
@@ -165,7 +165,8 @@ $folders = $roleManager->getUserSubjects($_SESSION["userId"]);
 
 <!-- Badge CSS -->
 <style>
-.badge-working { background:#d1fae5; color:#065f46; }
+.badge-initializing { background:#e0f2fe; color:#075985; }
 .badge-building { background:#fef3c7; color:#92400e; }
+.badge-deployed { background:#d1fae5; color:#065f46; }
 .badge-error { background:#fee2e2; color:#991b1b; }
 </style>

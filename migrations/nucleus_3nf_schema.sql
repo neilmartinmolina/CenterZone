@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS project_status (
     status_id INT PRIMARY KEY AUTO_INCREMENT,
     project_id INT NOT NULL UNIQUE,
-    status ENUM('building', 'working', 'error') NOT NULL DEFAULT 'working',
+    status ENUM('initializing', 'building', 'deployed', 'error') NOT NULL DEFAULT 'initializing',
     last_commit VARCHAR(255) NULL,
     status_note TEXT NULL,
     checked_at TIMESTAMP NULL,

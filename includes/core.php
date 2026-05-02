@@ -87,7 +87,12 @@ function projectWebhookUrl($projectId = null) {
         $baseUrl = $scheme . "://" . $host . rtrim(dirname($_SERVER["SCRIPT_NAME"] ?? "/"), "/\\");
     }
 
-    return $baseUrl . "/webhook.php";
+    $url = $baseUrl . "/webhook.php";
+    if ($projectId !== null && $projectId !== "") {
+        $url .= "?websiteId=" . urlencode((string) $projectId);
+    }
+
+    return $url;
 }
 
 function ensureProjectSavedAtColumn(PDO $pdo): void {
@@ -143,7 +148,7 @@ function formatNucleusDateTime($datetime) {
         return $date->format("g:i A");
     }
 
-    return $date->format("Y-m-d");
+    return $date->format("Y-m-d g:i A");
 }
 
 function logActivity($action, $note = null, $projectId = null, $version = null, $userId = null) {

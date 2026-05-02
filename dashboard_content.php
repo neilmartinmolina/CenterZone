@@ -6,7 +6,7 @@ $roleManager = new RoleManager($pdo);
 $todayWhere = $accessWhere ? $accessWhere . " AND DATE(p.last_updated_at) = CURDATE()" : " WHERE DATE(p.last_updated_at) = CURDATE()";
 
 $todayQuery = "
-    SELECT p.*, ps.status, ps.updated_by AS updatedBy, u.fullName
+    SELECT p.*, ps.status, ps.status_note, ps.updated_by AS updatedBy, u.fullName
     FROM projects p
     LEFT JOIN project_status ps ON ps.project_id = p.project_id
     LEFT JOIN users u ON ps.updated_by = u.userId
@@ -18,7 +18,7 @@ $todayStmt->execute($accessParams);
 $today = $todayStmt->fetchAll();
 
 $allStmt = $pdo->prepare("
-    SELECT p.*, ps.status, ps.updated_by AS updatedBy, u.fullName
+    SELECT p.*, ps.status, ps.status_note, ps.updated_by AS updatedBy, u.fullName
     FROM projects p
     LEFT JOIN project_status ps ON ps.project_id = p.project_id
     LEFT JOIN users u ON ps.updated_by = u.userId
@@ -120,7 +120,7 @@ $updatedToday = count($today);
 <?php foreach($all as $r): ?>
 <tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">
   <td class="py-3 pl-4 pr-4 font-medium text-slate-800"><?php echo htmlspecialchars($r["project_name"]); ?></td>
-  <td class="py-3 pr-4"><span class="px-2 py-1 rounded text-sm font-medium badge-<?php echo htmlspecialchars($r["status"] ?? "working"); ?>"><?php echo ucfirst(htmlspecialchars($r["status"] ?? "working")); ?></span></td>
+  <td class="py-3 pr-4"><span title="<?php echo htmlspecialchars($r["status_note"] ?? ""); ?>" class="px-2 py-1 rounded text-sm font-medium badge-<?php echo htmlspecialchars($r["status"] ?? "initializing"); ?>"><?php echo ucfirst(htmlspecialchars($r["status"] ?? "initializing")); ?></span></td>
   <td class="py-3 pr-4"><?php echo htmlspecialchars($r["current_version"]); ?></td>
    <?php if (hasPermission("update_project")): ?><td class="py-3 pr-4"><button class="status-select px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors border border-slate-200 cursor-pointer" data-website-id="<?php echo $r["project_id"]; ?>">Update</button></td><?php endif; ?>
 </tr>
@@ -131,7 +131,8 @@ $updatedToday = count($today);
 </div>
 
 <style>
-.badge-working { background:#d1fae5; color:#065f46; }
+.badge-initializing { background:#e0f2fe; color:#075985; }
 .badge-building { background:#fef3c7; color:#92400e; }
+.badge-deployed { background:#d1fae5; color:#065f46; }
 .badge-error { background:#fee2e2; color:#991b1b; }
 </style>

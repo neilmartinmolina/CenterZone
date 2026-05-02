@@ -4,7 +4,9 @@ require_once __DIR__ . "/includes/db.php";
 
 header("Content-Type: application/json");
 
-const WEBHOOK_STATUS_UPDATED = "working";
+const WEBHOOK_STATUS_INITIALIZING = "initializing";
+const WEBHOOK_STATUS_BUILDING = "building";
+const WEBHOOK_STATUS_DEPLOYED = "deployed";
 const WEBHOOK_STATUS_ISSUE = "error";
 
 function respond(int $statusCode, array $payload): void
@@ -89,7 +91,7 @@ function runCommand(string $command, ?int &$exitCode = null): string
     return trim(implode("\n", $lines));
 }
 
-function updateWebsiteStatus(PDO $pdo, int $websiteId, string $status, ?string $lastCommit, string $note, array $githubUser = []): void
+function updateWebsiteStatus(PDO $pdo, int $websiteId, string $status, ?string $lastCommit, string $note, array $githubUser = [], bool $markLastUpdated = false): void
 {
     $systemUserId = getSystemUserId($pdo);
 
@@ -105,7 +107,8 @@ function updateWebsiteStatus(PDO $pdo, int $websiteId, string $status, ?string $
     ");
     $stmt->execute([$websiteId, $status, $lastCommit, $note, $systemUserId]);
 
-    $stmt = $pdo->prepare("UPDATE projects SET last_updated_at = NOW(), updated_at = NOW() WHERE project_id = ?");
+    $timestampSql = $markLastUpdated ? "last_updated_at = NOW(), updated_at = NOW()" : "updated_at = NOW()";
+    $stmt = $pdo->prepare("UPDATE projects SET {$timestampSql} WHERE project_id = ?");
     $stmt->execute([$websiteId]);
 
     if ($systemUserId !== null) {
@@ -115,6 +118,82 @@ function updateWebsiteStatus(PDO $pdo, int $websiteId, string $status, ?string $
         $note = $note . " by " . $actor;
         $stmt->execute([$websiteId, $version, $note, $systemUserId]);
     }
+}
+
+function pingHomepage(string $url): array
+{
+    $url = trim($url);
+    if ($url === "") {
+        return [
+            "ok" => false,
+            "message" => "Homepage ping failed: project URL is empty",
+            "statusCode" => null,
+            "responseTimeMs" => null,
+        ];
+    }
+
+    if (!preg_match("~^https?://~i", $url)) {
+        $url = "https://" . $url;
+    }
+
+    $start = microtime(true);
+    $statusCode = null;
+    $body = "";
+    $error = null;
+
+    if (function_exists("curl_init")) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 12,
+            CURLOPT_USERAGENT => "Nucleus-Monitor/1.0",
+        ]);
+        $body = curl_exec($ch);
+        if ($body === false) {
+            $error = curl_error($ch);
+            $body = "";
+        }
+        $statusCode = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+    } else {
+        $context = stream_context_create([
+            "http" => [
+                "method" => "GET",
+                "timeout" => 12,
+                "header" => "User-Agent: Nucleus-Monitor/1.0\r\n",
+                "ignore_errors" => true,
+            ],
+        ]);
+        $body = @file_get_contents($url, false, $context);
+        if (isset($http_response_header[0]) && preg_match("~\s(\d{3})\s~", $http_response_header[0], $match)) {
+            $statusCode = (int) $match[1];
+        }
+        if ($body === false) {
+            $error = error_get_last()["message"] ?? "request failed";
+            $body = "";
+        }
+    }
+
+    $responseTimeMs = (int) round((microtime(true) - $start) * 1000);
+    $hasBody = trim((string) $body) !== "";
+    $ok = $statusCode !== null && $statusCode >= 200 && $statusCode < 400 && $hasBody;
+
+    if ($ok) {
+        $message = "Homepage ping passed: HTTP {$statusCode} in {$responseTimeMs}ms";
+    } elseif ($statusCode !== null) {
+        $message = "Homepage ping failed: HTTP {$statusCode}" . ($hasBody ? "" : " with empty response") . " in {$responseTimeMs}ms";
+    } else {
+        $message = "Homepage ping failed: " . ($error ?: "no HTTP response") . " in {$responseTimeMs}ms";
+    }
+
+    return [
+        "ok" => $ok,
+        "message" => $message,
+        "statusCode" => $statusCode,
+        "responseTimeMs" => $responseTimeMs,
+    ];
 }
 
 $requestMethod = $_SERVER["REQUEST_METHOD"] ?? "GET";
@@ -147,7 +226,7 @@ if ($repoName === "" && $fullRepoName === "") {
 }
 
 try {
-    $selectColumns = "project_id AS websiteId, project_name AS websiteName, github_repo_name AS repo_name, webhook_secret, deploy_path";
+    $selectColumns = "project_id AS websiteId, project_name AS websiteName, public_url, github_repo_name AS repo_name, webhook_secret, deploy_path";
 
     if ($requestedWebsiteId) {
         $stmt = $pdo->prepare("
@@ -193,6 +272,8 @@ try {
         respond(202, ["success" => true, "message" => "Event ignored"]);
     }
 
+    updateWebsiteStatus($pdo, (int) $website["websiteId"], WEBHOOK_STATUS_INITIALIZING, null, "Webhook received push for " . ($fullRepoName ?: $repoName), $githubUser ?? []);
+
     if (!commandExists("git")) {
         updateWebsiteStatus($pdo, (int) $website["websiteId"], WEBHOOK_STATUS_ISSUE, null, "Webhook failed: git is not installed or not available to PHP");
         respond(500, ["success" => false, "message" => "git is not available"]);
@@ -215,6 +296,8 @@ try {
         respond(500, ["success" => false, "message" => "Site path is not a git work tree"]);
     }
 
+    updateWebsiteStatus($pdo, (int) $website["websiteId"], WEBHOOK_STATUS_BUILDING, null, "Pulling latest changes for " . ($fullRepoName ?: $repoName));
+
     $pullCode = 0;
     $pullOutput = runCommand("git -C {$gitPath} pull --ff-only", $pullCode);
 
@@ -234,7 +317,23 @@ try {
         "username" => $data["sender"]["login"] ?? null,
     ];
 
-    updateWebsiteStatus($pdo, (int) $website["websiteId"], WEBHOOK_STATUS_UPDATED, $commitHash, "Webhook auto-update completed for " . ($fullRepoName ?: $repoName), $githubUser);
+    updateWebsiteStatus($pdo, (int) $website["websiteId"], WEBHOOK_STATUS_BUILDING, $commitHash, "Build/pull completed; verifying homepage for " . ($fullRepoName ?: $repoName), $githubUser);
+
+    $ping = pingHomepage((string) ($website["public_url"] ?? ""));
+    if (!$ping["ok"]) {
+        updateWebsiteStatus($pdo, (int) $website["websiteId"], WEBHOOK_STATUS_ISSUE, $commitHash, $ping["message"], $githubUser);
+        respond(500, [
+            "success" => false,
+            "message" => "Deployment completed but homepage ping failed",
+            "projectId" => (int) $website["websiteId"],
+            "repo" => $fullRepoName ?: $repoName,
+            "commit" => $commitHash,
+            "ping" => $ping,
+            "output" => $pullOutput,
+        ]);
+    }
+
+    updateWebsiteStatus($pdo, (int) $website["websiteId"], WEBHOOK_STATUS_DEPLOYED, $commitHash, "Webhook auto-update completed. " . $ping["message"], $githubUser, true);
 
     respond(200, [
         "success" => true,
@@ -242,6 +341,7 @@ try {
         "projectId" => (int) $website["websiteId"],
         "repo" => $fullRepoName ?: $repoName,
         "commit" => $commitHash,
+        "ping" => $ping,
         "output" => $pullOutput,
     ]);
 } catch (Throwable $e) {

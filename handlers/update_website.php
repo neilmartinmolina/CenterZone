@@ -24,15 +24,17 @@ if (!$websiteId || !$status) {
 }
 
 $statusMap = [
-    "updated" => "working",
+    "updated" => "deployed",
     "updating" => "building",
     "issue" => "error",
-    "working" => "working",
+    "working" => "deployed",
+    "initializing" => "initializing",
     "building" => "building",
+    "deployed" => "deployed",
     "error" => "error",
 ];
 $status = $statusMap[$status] ?? $status;
-$validStatuses = ["working", "building", "error"];
+$validStatuses = ["initializing", "building", "deployed", "error"];
 if (!in_array($status, $validStatuses)) {
     echo json_encode(["success" => false, "message" => "Invalid status"]);
     exit;
@@ -61,12 +63,12 @@ try {
     ");
     $stmt->execute([$websiteId, $status, $_SESSION["userId"]]);
 
-    if ($status === "working") {
+    if ($status === "deployed") {
         $versionParts = explode(".", $website["current_version"]);
         $versionParts[count($versionParts) - 1] = (string)((int)$versionParts[count($versionParts) - 1] + 1);
         $newVersion = implode(".", $versionParts);
         
-        $stmt = $pdo->prepare("UPDATE projects SET current_version = ? WHERE project_id = ?");
+        $stmt = $pdo->prepare("UPDATE projects SET current_version = ?, last_updated_at = NOW(), updated_at = NOW() WHERE project_id = ?");
         $stmt->execute([$newVersion, $websiteId]);
     } else {
         $stmt = $pdo->prepare("UPDATE projects SET updated_at = NOW() WHERE project_id = ?");

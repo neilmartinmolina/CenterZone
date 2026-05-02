@@ -27,9 +27,10 @@ $website = [
     "url" => "",
     "repo_url" => "",
     "repo_name" => "",
+    "deploy_path" => "",
     "webhook_secret" => bin2hex(random_bytes(32)),
     "currentVersion" => "1.0.0",
-    "status" => "working",
+    "status" => "initializing",
     "folder_id" => $_GET["folderId"] ?? "",
 ];
 
@@ -42,8 +43,8 @@ if ($isEdit) {
     $stmt = $pdo->prepare("
         SELECT p.project_id AS websiteId, p.project_name AS websiteName, p.public_url AS url,
                p.github_repo_url AS repo_url, p.github_repo_name AS repo_name,
-               p.webhook_secret, p.current_version AS currentVersion,
-               COALESCE(ps.status, 'working') AS status, p.subject_id AS folder_id
+               p.deploy_path, p.webhook_secret, p.current_version AS currentVersion,
+               COALESCE(ps.status, 'initializing') AS status, p.subject_id AS folder_id
         FROM projects p
         LEFT JOIN project_status ps ON ps.project_id = p.project_id
         WHERE p.project_id = ?
@@ -71,9 +72,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $website["url"] = trim($_POST["url"] ?? "");
     $website["repo_url"] = trim($_POST["repo_url"] ?? "");
     $website["repo_name"] = extractRepoNameFromGitUrl($website["repo_url"]);
+    $website["deploy_path"] = trim($_POST["deploy_path"] ?? "");
     $website["webhook_secret"] = trim($_POST["webhook_secret"] ?? "");
     $website["currentVersion"] = trim($_POST["version"] ?? "1.0.0");
-    $website["status"] = $_POST["status"] ?? "updated";
+    $statusMap = ["working" => "deployed", "updated" => "deployed"];
+    $website["status"] = $statusMap[$_POST["status"] ?? "initializing"] ?? ($_POST["status"] ?? "initializing");
     $website["folder_id"] = $_POST["folderId"] ?? null;
 
     if ($website["websiteName"] === "" || $website["url"] === "" || $website["repo_url"] === "") {
@@ -84,7 +87,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $error = "Webhook secret is required.";
     } elseif (!Security::validateVersion($website["currentVersion"])) {
         $error = "Version must be in format like 1.0.0 or v1.0.0.";
-    } elseif (!in_array($website["status"], ["working", "building", "error"], true)) {
+    } elseif (!in_array($website["status"], ["initializing", "building", "deployed", "error"], true)) {
         $error = "Invalid status selected.";
     } elseif (!empty($website["folder_id"]) && !$roleManager->canAccessSubject($_SESSION["userId"], (int) $website["folder_id"])) {
         $error = "You do not have access to that subject.";
@@ -94,7 +97,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             if ($isEdit) {
                 $stmt = $pdo->prepare("
                     UPDATE projects
-                    SET project_name = ?, public_url = ?, github_repo_url = ?, github_repo_name = ?, webhook_secret = ?,
+                    SET project_name = ?, public_url = ?, github_repo_url = ?, github_repo_name = ?, deploy_path = ?, webhook_secret = ?,
                         current_version = ?, subject_id = ?, saved_at = NOW(), updated_at = NOW()
                     WHERE project_id = ?
                 ");
@@ -103,6 +106,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $website["url"],
                     $website["repo_url"],
                     $website["repo_name"],
+                    $website["deploy_path"] !== "" ? $website["deploy_path"] : null,
                     $website["webhook_secret"],
                     $website["currentVersion"],
                     $website["folder_id"] ?: null,
@@ -118,14 +122,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             } else {
                 $stmt = $pdo->prepare("
                     INSERT INTO projects
-                        (project_name, public_url, github_repo_url, github_repo_name, webhook_secret, current_version, subject_id, owner_id, created_at, updated_at, saved_at, last_updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW(), NULL)
+                        (project_name, public_url, github_repo_url, github_repo_name, deploy_path, webhook_secret, current_version, subject_id, owner_id, created_at, updated_at, saved_at, last_updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW(), NULL)
                 ");
                 $stmt->execute([
                     $website["websiteName"],
                     $website["url"],
                     $website["repo_url"],
                     $website["repo_name"],
+                    $website["deploy_path"] !== "" ? $website["deploy_path"] : null,
                     $website["webhook_secret"],
                     $website["currentVersion"],
                     $website["folder_id"] ?: null,
@@ -209,6 +214,11 @@ if ($websiteId) {
         <label class="mb-1 block text-sm font-medium text-slate-700">GitHub Repo URL (.git) *</label>
         <input type="url" name="repo_url" id="repoUrl" required pattern="https?://.+\.git$" value="<?php echo htmlspecialchars($website["repo_url"]); ?>" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20" placeholder="https://github.com/owner/repo.git">
       </div>
+      <div class="md:col-span-2">
+        <label class="mb-1 block text-sm font-medium text-slate-700">Deploy Path</label>
+        <input type="text" name="deploy_path" value="<?php echo htmlspecialchars($website["deploy_path"]); ?>" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20" placeholder="/home/username/domains/example.com/public_html">
+        <p class="mt-1 text-xs text-slate-500">Optional absolute path to the Git checkout. Leave blank to use SITES_BASE_PATH/repo-name.</p>
+      </div>
       <div>
         <label class="mb-1 block text-sm font-medium text-slate-700">Version *</label>
         <input type="text" name="version" required value="<?php echo htmlspecialchars($website["currentVersion"]); ?>" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20">
@@ -216,7 +226,7 @@ if ($websiteId) {
       <div>
         <label class="mb-1 block text-sm font-medium text-slate-700">Status</label>
         <select name="status" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20">
-          <?php foreach (["working" => "Working", "building" => "Building", "error" => "Error"] as $value => $label): ?>
+          <?php foreach (["initializing" => "Initializing", "building" => "Building", "deployed" => "Deployed", "error" => "Error"] as $value => $label): ?>
           <option value="<?php echo $value; ?>" <?php echo $website["status"] === $value ? "selected" : ""; ?>><?php echo $label; ?></option>
           <?php endforeach; ?>
         </select>

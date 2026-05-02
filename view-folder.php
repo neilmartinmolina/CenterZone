@@ -35,6 +35,7 @@ $subjectWhere = $accessWhere ? $accessWhere . " AND p.subject_id = ?" : " WHERE 
 $stmt = $pdo->prepare("
     SELECT p.project_id AS websiteId, p.project_name AS websiteName, p.public_url AS url,
            p.current_version AS currentVersion, p.last_updated_at AS lastUpdatedAt,
+           COALESCE(ps.status, 'initializing') AS deployStatus, ps.status_note AS statusNote,
            ps.updated_by AS updatedBy, u.fullName as updatedByName
     FROM projects p
     LEFT JOIN project_status ps ON ps.project_id = p.project_id
@@ -55,14 +56,17 @@ $needsUpdate = $pdo->prepare("
     SELECT COUNT(*) as c
     FROM projects p
     LEFT JOIN project_status ps ON ps.project_id = p.project_id
-    WHERE p.subject_id = ? AND (ps.status IN ('building','error') OR p.last_updated_at < DATE_SUB(CURDATE(), INTERVAL 15 DAY))
+    WHERE p.subject_id = ? AND (ps.status IN ('initializing','building','error') OR p.last_updated_at < DATE_SUB(CURDATE(), INTERVAL 15 DAY))
 ");
 $needsUpdate->execute([$folderId]);
 $needsUpdate = $needsUpdate->fetch()["c"];
 
 generateCSRFToken();
 
-function computeStatus($lastUpdatedAt) {
+function computeStatus($lastUpdatedAt, $deployStatus = "deployed") {
+    if (in_array($deployStatus, ["initializing", "building", "error"], true)) {
+        return ucfirst($deployStatus);
+    }
     if (!$lastUpdatedAt) return "30d+ old";
     $diffDays = (new DateTime())->diff(new DateTime($lastUpdatedAt))->days;
     if ($diffDays <= 14) return "Up to date";
@@ -199,6 +203,9 @@ if (!$isEmbedded):
 
                 <select id="statusFilter" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-cta focus:bg-white focus:ring-2 focus:ring-cta/20">
                     <option value="all">All statuses</option>
+                    <option value="Initializing">Initializing</option>
+                    <option value="Building">Building</option>
+                    <option value="Error">Error</option>
                     <option value="Up to date">Up to date</option>
                     <option value="Needs update">Needs update</option>
                     <option value="30d+ old">30d+ old</option>
@@ -222,11 +229,13 @@ if (!$isEmbedded):
 
         <section id="projectGrid" class="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             <?php foreach ($websites as $website):
-                $statusLabel = computeStatus($website["lastUpdatedAt"]);
+                $statusLabel = computeStatus($website["lastUpdatedAt"], $website["deployStatus"]);
                 $timeAgo = timeAgo($website["lastUpdatedAt"]);
-                if ($statusLabel === "Up to date") {
+                if ($statusLabel === "Initializing") {
+                    $statusClass = "bg-sky-50 text-sky-700 ring-sky-600/20";
+                } elseif ($statusLabel === "Up to date") {
                     $statusClass = "bg-emerald-50 text-emerald-700 ring-emerald-600/20";
-                } elseif ($statusLabel === "Needs update") {
+                } elseif ($statusLabel === "Needs update" || $statusLabel === "Building") {
                     $statusClass = "bg-amber-50 text-amber-700 ring-amber-600/20";
                 } else {
                     $statusClass = "bg-red-50 text-red-700 ring-red-600/20";
@@ -239,7 +248,7 @@ if (!$isEmbedded):
                         <h2 class="truncate text-lg font-semibold text-slate-900"><?php echo htmlspecialchars($website["websiteName"]); ?></h2>
                         <a href="<?php echo htmlspecialchars($website["url"]); ?>" target="_blank" rel="noopener noreferrer" class="mt-1 block truncate text-sm text-slate-500 transition-colors hover:text-cta"><?php echo htmlspecialchars($website["url"]); ?></a>
                     </div>
-                    <span class="status-badge shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset <?php echo $statusClass; ?>"><?php echo $statusLabel; ?></span>
+                    <span title="<?php echo htmlspecialchars($website["statusNote"] ?? ""); ?>" class="status-badge shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset <?php echo $statusClass; ?>"><?php echo $statusLabel; ?></span>
                 </div>
 
                 <div class="space-y-3 rounded-lg bg-slate-50 p-4 text-sm">
