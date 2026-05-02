@@ -12,23 +12,23 @@ require_once __DIR__ . "/../../config.php";
 <body class="bg-slate-50 text-slate-800">
   <main class="mx-auto max-w-3xl px-6 py-10">
     <a href="<?php echo htmlspecialchars(APP_URL ?: "../../dashboard.php?page=websites"); ?>" class="text-sm font-medium text-blue-600 hover:text-blue-700">Back to Nucleus</a>
-    <h1 class="mt-6 text-3xl font-bold tracking-tight text-slate-950">Setting Up Your Project Webhook</h1>
+    <h1 class="mt-6 text-3xl font-bold tracking-tight text-slate-950">Setting Up Project Deployment Monitoring</h1>
     <div class="mt-8 space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <section>
         <h2 class="text-lg font-semibold text-slate-900">1. Save the project in Nucleus</h2>
-        <p class="mt-2 text-sm leading-6 text-slate-600">Open the project setup page, add the GitHub repo URL ending in <code class="rounded bg-slate-100 px-1 py-0.5">.git</code>, and save the project. Nucleus generates a project webhook URL and secret.</p>
+        <p class="mt-2 text-sm leading-6 text-slate-600">Open the project setup page, add the public website URL and GitHub repo URL ending in <code class="rounded bg-slate-100 px-1 py-0.5">.git</code>, choose a deployment mode, then save the project.</p>
       </section>
       <section>
-        <h2 class="text-lg font-semibold text-slate-900">2. Create the GitHub webhook</h2>
-        <p class="mt-2 text-sm leading-6 text-slate-600">In GitHub, go to the repository settings, open Webhooks, then add a webhook. Paste the Nucleus webhook URL into Payload URL.</p>
+        <h2 class="text-lg font-semibold text-slate-900">2. Use Hostinger Git or custom webhook</h2>
+        <p class="mt-2 text-sm leading-6 text-slate-600">For Hostinger Git, keep using Hostinger's deployment webhook. Nucleus does not need <code class="rounded bg-slate-100 px-1 py-0.5">deploy.php</code>; it monitors the public URL, status files if available, optional <code class="rounded bg-slate-100 px-1 py-0.5">version.json</code>, and HTTP reachability.</p>
       </section>
       <section>
-        <h2 class="text-lg font-semibold text-slate-900">3. Use JSON and the project secret</h2>
-        <p class="mt-2 text-sm leading-6 text-slate-600">Set Content type to <code class="rounded bg-slate-100 px-1 py-0.5">application/json</code>. Paste the project secret into Secret. Enable push events.</p>
+        <h2 class="text-lg font-semibold text-slate-900">3. Custom webhook mode</h2>
+        <p class="mt-2 text-sm leading-6 text-slate-600">For custom webhook mode, use <code class="rounded bg-slate-100 px-1 py-0.5">deploy.example.php</code> as the pattern for the deployed project's <code class="rounded bg-slate-100 px-1 py-0.5">deploy.php</code>. GitHub should call that single deploy script, which writes <code class="rounded bg-slate-100 px-1 py-0.5">status.json</code>, pulls, builds, and records the final result.</p>
       </section>
       <section>
-        <h2 class="text-lg font-semibold text-slate-900">4. Confirm server access</h2>
-        <p class="mt-2 text-sm leading-6 text-slate-600">The web server user must be able to run <code class="rounded bg-slate-100 px-1 py-0.5">git pull</code> in the target site folder. The folder path can be set with <code class="rounded bg-slate-100 px-1 py-0.5">deploy_path</code> or by using <code class="rounded bg-slate-100 px-1 py-0.5">SITES_BASE_PATH/repo_name</code>.</p>
+        <h2 class="text-lg font-semibold text-slate-900">4. Let Nucleus monitor status</h2>
+        <p class="mt-2 text-sm leading-6 text-slate-600">Do not create a second webhook for Nucleus. Nucleus polls <code class="rounded bg-slate-100 px-1 py-0.5">status.json</code>, <code class="rounded bg-slate-100 px-1 py-0.5">/api/status</code>, optional <code class="rounded bg-slate-100 px-1 py-0.5">version.json</code>, and the homepage, then mirrors the read-only result into the dashboard.</p>
       </section>
     </div>
   </main>

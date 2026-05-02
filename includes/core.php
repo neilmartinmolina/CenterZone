@@ -132,6 +132,10 @@ function displayUpdatedBy(array $row) {
         ?? "Unknown";
 }
 
+function deploymentModeLabel($mode) {
+    return $mode === "custom_webhook" ? "Monitored via project deploy.php" : "Monitored via Hostinger Git";
+}
+
 function formatNucleusDateTime($datetime) {
     if (empty($datetime)) {
         return "Never";

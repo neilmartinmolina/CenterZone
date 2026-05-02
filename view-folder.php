@@ -35,6 +35,7 @@ $subjectWhere = $accessWhere ? $accessWhere . " AND p.subject_id = ?" : " WHERE 
 $stmt = $pdo->prepare("
     SELECT p.project_id AS websiteId, p.project_name AS websiteName, p.public_url AS url,
            p.current_version AS currentVersion, p.last_updated_at AS lastUpdatedAt,
+           COALESCE(p.deployment_mode, 'hostinger_git') AS deploymentMode,
            COALESCE(ps.status, 'initializing') AS deployStatus, ps.status_note AS statusNote,
            ps.updated_by AS updatedBy, u.fullName as updatedByName
     FROM projects p
@@ -248,7 +249,7 @@ if (!$isEmbedded):
                         <h2 class="truncate text-lg font-semibold text-slate-900"><?php echo htmlspecialchars($website["websiteName"]); ?></h2>
                         <a href="<?php echo htmlspecialchars($website["url"]); ?>" target="_blank" rel="noopener noreferrer" class="mt-1 block truncate text-sm text-slate-500 transition-colors hover:text-cta"><?php echo htmlspecialchars($website["url"]); ?></a>
                     </div>
-                    <span title="<?php echo htmlspecialchars($website["statusNote"] ?? ""); ?>" class="status-badge shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset <?php echo $statusClass; ?>"><?php echo $statusLabel; ?></span>
+                    <span data-project-status-id="<?php echo (int) $website["websiteId"]; ?>" title="<?php echo htmlspecialchars($website["statusNote"] ?? ""); ?>" class="status-badge shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset <?php echo $statusClass; ?>"><?php echo $statusLabel; ?></span>
                 </div>
 
                 <div class="space-y-3 rounded-lg bg-slate-50 p-4 text-sm">
@@ -263,6 +264,10 @@ if (!$isEmbedded):
                     <div class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Updated by</span>
                         <span class="truncate font-medium text-slate-800"><?php echo htmlspecialchars(displayUpdatedBy($website)); ?></span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-slate-500">Monitoring</span>
+                        <span class="truncate font-medium text-slate-800"><?php echo htmlspecialchars(deploymentModeLabel($website["deploymentMode"])); ?></span>
                     </div>
                 </div>
 

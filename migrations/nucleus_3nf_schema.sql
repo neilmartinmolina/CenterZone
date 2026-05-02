@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS projects (
     public_url VARCHAR(2048) NULL,
     github_repo_url VARCHAR(2048) NULL,
     github_repo_name VARCHAR(255) NULL,
+    deployment_mode ENUM('hostinger_git', 'custom_webhook') NOT NULL DEFAULT 'hostinger_git',
     deploy_path VARCHAR(2048) NULL,
     webhook_secret VARCHAR(128) NULL,
     current_version VARCHAR(50) NOT NULL DEFAULT '1.0.0',

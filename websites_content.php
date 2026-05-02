@@ -139,7 +139,10 @@ $folders = $roleManager->getUserSubjects($_SESSION["userId"]);
           <td class="py-4 pl-6 pr-4 font-medium text-slate-800"><?php echo htmlspecialchars($w["project_name"]); ?></td>
           <td class="py-4 pr-4 text-sm text-slate-600"><?php echo htmlspecialchars($w["folderName"] ?? "—"); ?></td>
           <td class="py-4 pr-4"><span class="px-2 py-1 rounded bg-blue-50 text-blue-700 text-sm font-medium"><?php echo htmlspecialchars($w["current_version"]); ?></span></td>
-          <td class="py-4 pr-4"><span title="<?php echo htmlspecialchars($w["status_note"] ?? ""); ?>" class="px-2 py-1 rounded text-sm font-medium badge-<?php echo htmlspecialchars($w["status"] ?? "initializing"); ?>"><?php echo ucfirst(htmlspecialchars($w["status"] ?? "initializing")); ?></span></td>
+          <td class="py-4 pr-4">
+            <span data-project-status-id="<?php echo (int) $w["project_id"]; ?>" title="<?php echo htmlspecialchars($w["status_note"] ?? ""); ?>" class="px-2 py-1 rounded text-sm font-medium badge-<?php echo htmlspecialchars($w["status"] ?? "initializing"); ?>"><?php echo ucfirst(htmlspecialchars($w["status"] ?? "initializing")); ?></span>
+            <div class="mt-1 text-xs text-slate-500"><?php echo htmlspecialchars(deploymentModeLabel($w["deployment_mode"] ?? "hostinger_git")); ?></div>
+          </td>
           <td class="py-4 pr-4 text-sm text-slate-600"><?php echo htmlspecialchars(displayUpdatedBy($w)); ?></td>
           <td class="py-4 pr-4 text-sm text-slate-500"><?php echo htmlspecialchars(formatNucleusDateTime($w["last_updated_at"])); ?></td>
           <td class="py-4 pr-4 text-sm text-slate-500"><?php echo htmlspecialchars(formatNucleusDateTime($w["saved_at"] ?? $w["created_at"])); ?></td>

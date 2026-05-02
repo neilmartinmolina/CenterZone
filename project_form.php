@@ -27,6 +27,7 @@ $website = [
     "url" => "",
     "repo_url" => "",
     "repo_name" => "",
+    "deployment_mode" => "hostinger_git",
     "deploy_path" => "",
     "webhook_secret" => bin2hex(random_bytes(32)),
     "currentVersion" => "1.0.0",
@@ -43,6 +44,7 @@ if ($isEdit) {
     $stmt = $pdo->prepare("
         SELECT p.project_id AS websiteId, p.project_name AS websiteName, p.public_url AS url,
                p.github_repo_url AS repo_url, p.github_repo_name AS repo_name,
+               COALESCE(p.deployment_mode, 'hostinger_git') AS deployment_mode,
                p.deploy_path, p.webhook_secret, p.current_version AS currentVersion,
                COALESCE(ps.status, 'initializing') AS status, p.subject_id AS folder_id
         FROM projects p
@@ -72,6 +74,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $website["url"] = trim($_POST["url"] ?? "");
     $website["repo_url"] = trim($_POST["repo_url"] ?? "");
     $website["repo_name"] = extractRepoNameFromGitUrl($website["repo_url"]);
+    $website["deployment_mode"] = $_POST["deployment_mode"] ?? "hostinger_git";
     $website["deploy_path"] = trim($_POST["deploy_path"] ?? "");
     $website["webhook_secret"] = trim($_POST["webhook_secret"] ?? "");
     $website["currentVersion"] = trim($_POST["version"] ?? "1.0.0");
@@ -83,7 +86,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $error = "Website name, URL, and GitHub repo URL are required.";
     } elseif (!validateGitRepoUrl($website["repo_url"]) || $website["repo_name"] === "") {
         $error = "GitHub repo URL must end with .git.";
-    } elseif ($website["webhook_secret"] === "") {
+    } elseif (!in_array($website["deployment_mode"], ["hostinger_git", "custom_webhook"], true)) {
+        $error = "Invalid deployment mode selected.";
+    } elseif ($website["deployment_mode"] === "custom_webhook" && $website["webhook_secret"] === "") {
         $error = "Webhook secret is required.";
     } elseif (!Security::validateVersion($website["currentVersion"])) {
         $error = "Version must be in format like 1.0.0 or v1.0.0.";
@@ -97,7 +102,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             if ($isEdit) {
                 $stmt = $pdo->prepare("
                     UPDATE projects
-                    SET project_name = ?, public_url = ?, github_repo_url = ?, github_repo_name = ?, deploy_path = ?, webhook_secret = ?,
+                    SET project_name = ?, public_url = ?, github_repo_url = ?, github_repo_name = ?, deployment_mode = ?, deploy_path = ?, webhook_secret = ?,
                         current_version = ?, subject_id = ?, saved_at = NOW(), updated_at = NOW()
                     WHERE project_id = ?
                 ");
@@ -106,6 +111,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $website["url"],
                     $website["repo_url"],
                     $website["repo_name"],
+                    $website["deployment_mode"],
                     $website["deploy_path"] !== "" ? $website["deploy_path"] : null,
                     $website["webhook_secret"],
                     $website["currentVersion"],
@@ -122,14 +128,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             } else {
                 $stmt = $pdo->prepare("
                     INSERT INTO projects
-                        (project_name, public_url, github_repo_url, github_repo_name, deploy_path, webhook_secret, current_version, subject_id, owner_id, created_at, updated_at, saved_at, last_updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW(), NULL)
+                        (project_name, public_url, github_repo_url, github_repo_name, deployment_mode, deploy_path, webhook_secret, current_version, subject_id, owner_id, created_at, updated_at, saved_at, last_updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW(), NULL)
                 ");
                 $stmt->execute([
                     $website["websiteName"],
                     $website["url"],
                     $website["repo_url"],
                     $website["repo_name"],
+                    $website["deployment_mode"],
                     $website["deploy_path"] !== "" ? $website["deploy_path"] : null,
                     $website["webhook_secret"],
                     $website["currentVersion"],
@@ -155,7 +162,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $stmt->execute([$websiteId, $_SESSION["userId"], $isEdit ? "project_updated" : "project_created", $website["currentVersion"], "Project saved in {$subjectNote}"]);
 
             $pdo->commit();
-            $success = "Project saved. The webhook toolkit is ready to use.";
+            $success = "Project saved. The deployment monitor is ready to use.";
             $isEdit = true;
             if (!$isAjaxRequest) {
                 header("Location: dashboard.php?page=project-form&websiteId=" . $websiteId . "&saved=1");
@@ -170,9 +177,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
 }
 
-$webhookUrl = projectWebhookUrl($websiteId);
 $githubHookUrl = githubHooksUrl($website["repo_url"]);
 $tutorialUrl = rtrim(APP_URL, "/") . "/tutorial/setting-up-your-project";
+$projectPublicBase = rtrim($website["url"], "/");
+$deployWebhookUrl = $projectPublicBase !== "" ? $projectPublicBase . "/deploy.php" : "";
+$statusEndpointUrl = $projectPublicBase !== "" ? $projectPublicBase . "/status.json" : "";
+$isCustomWebhook = $website["deployment_mode"] === "custom_webhook";
 $formAction = "get_content.php?tab=project-form";
 if ($websiteId) {
     $formAction .= "&websiteId=" . urlencode((string) $websiteId);
@@ -183,13 +193,13 @@ if ($websiteId) {
 <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
   <div>
     <h1 class="text-2xl font-bold text-slate-800"><?php echo $isEdit ? "Edit Project" : "Create Project"; ?></h1>
-    <p class="text-sm text-slate-500">Project details and webhook setup live together here.</p>
+    <p class="text-sm text-slate-500">Project details and deployment monitoring live together here.</p>
   </div>
   <a href="dashboard.php?page=websites" class="text-sm font-medium text-slate-600 transition-colors hover:text-navy">Back to Websites</a>
 </div>
 
 <?php if (isset($_GET["saved"])): ?>
-<div data-feedback="success" data-feedback-title="Project saved" data-feedback-message="Project saved. The webhook toolkit is ready to use." class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">Project saved. The webhook toolkit below is ready to use.</div>
+<div data-feedback="success" data-feedback-title="Project saved" data-feedback-message="Project saved. The deployment monitor is ready to use." class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">Project saved. The deployment monitor below is ready to use.</div>
 <?php endif; ?>
 <?php if ($success): ?>
 <div data-feedback="success" data-feedback-title="Project saved" data-feedback-message="<?php echo htmlspecialchars($success); ?>" class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700"><?php echo htmlspecialchars($success); ?></div>
@@ -218,6 +228,14 @@ if ($websiteId) {
         <label class="mb-1 block text-sm font-medium text-slate-700">Deploy Path</label>
         <input type="text" name="deploy_path" value="<?php echo htmlspecialchars($website["deploy_path"]); ?>" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20" placeholder="/home/username/domains/example.com/public_html">
         <p class="mt-1 text-xs text-slate-500">Optional absolute path to the Git checkout. Leave blank to use SITES_BASE_PATH/repo-name.</p>
+      </div>
+      <div class="md:col-span-2">
+        <label class="mb-1 block text-sm font-medium text-slate-700">Deployment Mode</label>
+        <select name="deployment_mode" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20">
+          <option value="hostinger_git" <?php echo $website["deployment_mode"] === "hostinger_git" ? "selected" : ""; ?>>Hostinger Git</option>
+          <option value="custom_webhook" <?php echo $website["deployment_mode"] === "custom_webhook" ? "selected" : ""; ?>>Custom Webhook</option>
+        </select>
+        <p class="mt-1 text-xs text-slate-500">Hostinger Git is monitored by URL checks. Custom Webhook expects the project deploy.php to write status.json.</p>
       </div>
       <div>
         <label class="mb-1 block text-sm font-medium text-slate-700">Version *</label>
@@ -255,18 +273,26 @@ if ($websiteId) {
   </form>
 
   <aside class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-    <h2 class="text-lg font-semibold text-slate-900">Webhook Toolkit</h2>
+    <h2 class="text-lg font-semibold text-slate-900">Deployment Monitor</h2>
     <div class="mt-5 space-y-5">
       <div>
-        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Webhook URL</label>
+        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Deploy Webhook URL</label>
         <div class="flex gap-2">
-          <input id="webhookUrl" readonly value="<?php echo htmlspecialchars($webhookUrl); ?>" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          <button type="button" class="copy-btn rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" data-copy-target="webhookUrl">Copy</button>
+          <input id="deployWebhookUrl" readonly value="<?php echo htmlspecialchars($deployWebhookUrl); ?>" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <button type="button" class="copy-btn rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" data-copy-target="deployWebhookUrl">Copy</button>
         </div>
+        <p class="mt-1 text-xs text-slate-500"><?php echo $isCustomWebhook ? "Use this as the single GitHub webhook target when deploy.php exists in the deployed project." : "Not required for Hostinger Git mode. Hostinger owns deployment; Nucleus only monitors."; ?></p>
       </div>
       <div>
-        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Secret</label>
+        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Deploy Secret</label>
         <button type="button" class="copy-btn w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50" data-copy-target="webhookSecret">Copy webhook secret</button>
+      </div>
+      <div>
+        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Status Endpoint</label>
+        <div class="flex gap-2">
+          <input id="statusEndpointUrl" readonly value="<?php echo htmlspecialchars($statusEndpointUrl); ?>" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <button type="button" class="copy-btn rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" data-copy-target="statusEndpointUrl">Copy</button>
+        </div>
       </div>
       <div>
         <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Setup Webhook On</label>
@@ -281,7 +307,7 @@ if ($websiteId) {
         <a href="<?php echo htmlspecialchars($tutorialUrl); ?>" target="_blank" rel="noopener noreferrer" class="block rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-cta transition hover:bg-slate-50">nucleus/tutorial/setting-up-your-project</a>
       </div>
       <div class="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
-        GitHub payload type should be JSON, event should be push, and the secret must match this project.
+        <?php echo $isCustomWebhook ? "GitHub should call only the deploy script. Nucleus reads status.json or /api/status and never receives a second deployment webhook." : "Monitored via Hostinger Git. Nucleus checks the public URL, status.json or /api/status if present, optional version.json, and HTTP reachability."; ?>
       </div>
     </div>
   </aside>

@@ -120,7 +120,10 @@ $updatedToday = count($today);
 <?php foreach($all as $r): ?>
 <tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">
   <td class="py-3 pl-4 pr-4 font-medium text-slate-800"><?php echo htmlspecialchars($r["project_name"]); ?></td>
-  <td class="py-3 pr-4"><span title="<?php echo htmlspecialchars($r["status_note"] ?? ""); ?>" class="px-2 py-1 rounded text-sm font-medium badge-<?php echo htmlspecialchars($r["status"] ?? "initializing"); ?>"><?php echo ucfirst(htmlspecialchars($r["status"] ?? "initializing")); ?></span></td>
+  <td class="py-3 pr-4">
+    <span data-project-status-id="<?php echo (int) $r["project_id"]; ?>" title="<?php echo htmlspecialchars($r["status_note"] ?? ""); ?>" class="px-2 py-1 rounded text-sm font-medium badge-<?php echo htmlspecialchars($r["status"] ?? "initializing"); ?>"><?php echo ucfirst(htmlspecialchars($r["status"] ?? "initializing")); ?></span>
+    <div class="mt-1 text-xs text-slate-500"><?php echo htmlspecialchars(deploymentModeLabel($r["deployment_mode"] ?? "hostinger_git")); ?></div>
+  </td>
   <td class="py-3 pr-4"><?php echo htmlspecialchars($r["current_version"]); ?></td>
    <?php if (hasPermission("update_project")): ?><td class="py-3 pr-4"><button class="status-select px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors border border-slate-200 cursor-pointer" data-website-id="<?php echo $r["project_id"]; ?>">Update</button></td><?php endif; ?>
 </tr>

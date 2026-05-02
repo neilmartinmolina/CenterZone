@@ -4,7 +4,8 @@
 ALTER TABLE projects
     ADD COLUMN IF NOT EXISTS github_repo_url VARCHAR(2048) NULL AFTER public_url,
     ADD COLUMN IF NOT EXISTS github_repo_name VARCHAR(255) NULL AFTER github_repo_url,
-    ADD COLUMN IF NOT EXISTS deploy_path VARCHAR(2048) NULL AFTER github_repo_name,
+    ADD COLUMN IF NOT EXISTS deployment_mode ENUM('hostinger_git', 'custom_webhook') NOT NULL DEFAULT 'hostinger_git' AFTER github_repo_name,
+    ADD COLUMN IF NOT EXISTS deploy_path VARCHAR(2048) NULL AFTER deployment_mode,
     ADD COLUMN IF NOT EXISTS webhook_secret VARCHAR(128) NULL AFTER deploy_path,
     ADD COLUMN IF NOT EXISTS last_updated_at TIMESTAMP NULL AFTER updated_at;
 

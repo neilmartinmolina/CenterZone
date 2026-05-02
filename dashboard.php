@@ -255,10 +255,74 @@ generateCSRFToken();
             });
         }
 
+        let statusPollTimer = null;
+
+        function statusBadgeClasses(status, compact = false) {
+            if (compact) {
+                const base = 'status-badge shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ';
+                return {
+                    initializing: base + 'bg-sky-50 text-sky-700 ring-sky-600/20',
+                    building: base + 'bg-amber-50 text-amber-700 ring-amber-600/20',
+                    deployed: base + 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+                    error: base + 'bg-red-50 text-red-700 ring-red-600/20',
+                }[status] || base + 'bg-red-50 text-red-700 ring-red-600/20';
+            }
+
+            return 'px-2 py-1 rounded text-sm font-medium badge-' + status;
+        }
+
+        function applyProjectStatus(badge, result) {
+            const status = result.status || 'error';
+            const isCardBadge = badge.classList.contains('status-badge');
+            badge.className = statusBadgeClasses(status, isCardBadge);
+            badge.textContent = result.displayStatus || status.charAt(0).toUpperCase() + status.slice(1);
+            badge.title = result.message || '';
+
+            const card = badge.closest('.project-card');
+            if (card) {
+                card.dataset.status = badge.textContent;
+                if (status === 'deployed') {
+                    card.dataset.updated = Math.floor(Date.now() / 1000);
+                    const time = card.querySelector('.project-time');
+                    if (time && result.displayUpdatedAt) time.textContent = result.displayUpdatedAt;
+                }
+            }
+        }
+
+        function initStatusPolling(scope = document) {
+            if (statusPollTimer) {
+                clearInterval(statusPollTimer);
+                statusPollTimer = null;
+            }
+
+            const badges = Array.from(scope.querySelectorAll('[data-project-status-id]'));
+            if (!badges.length) return;
+
+            async function pollOnce() {
+                const projectIds = Array.from(new Set(badges.map(badge => badge.dataset.projectStatusId).filter(Boolean)));
+                await Promise.all(projectIds.map(async projectId => {
+                    try {
+                        const response = await fetch('handlers/check_project_status.php?projectId=' + encodeURIComponent(projectId), {
+                            headers: { 'Accept': 'application/json' }
+                        });
+                        const result = await response.json();
+                        if (!result.success) return;
+                        scope.querySelectorAll(`[data-project-status-id="${CSS.escape(projectId)}"]`).forEach(badge => applyProjectStatus(badge, result));
+                    } catch (err) {
+                        console.debug('Status poll failed', err);
+                    }
+                }));
+            }
+
+            pollOnce();
+            statusPollTimer = setInterval(pollOnce, 5000);
+        }
+
         function renderContent(page, html) {
             contentEl.innerHTML = html;
             runInlineScripts(contentEl);
             initNucleusDataTables(contentEl);
+            initStatusPolling(contentEl);
             updateActiveNav(page);
             titleEl.textContent = pageTitles(page);
             showFeedback(contentEl);
