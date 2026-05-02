@@ -36,10 +36,10 @@ if ($isAuthenticated) {
     <nav class="flex items-center justify-between px-12 py-6 bg-navy text-white">
         <div class="text-2xl font-bold tracking-tight">NUCLEUS</div>
         <div class="space-x-8 text-sm">
-            <a href="#" class="hover:text-accent">Products</a>
-            <a href="#" class="hover:text-accent">Solutions</a>
-            <a href="#" class="hover:text-accent">Resources</a>
+            <a href="#" class="hover:text-accent">About</a>
+            <a href="#" class="hover:text-accent">Features</a>
             <a href="#" class="hover:text-accent">Pricing</a>
+            <a href="#" class="hover:text-accent">Blog</a>
         </div>
         <div class="space-x-4">
             <a href="login.php" class="bg-accent text-black px-6 py-2 rounded-lg font-medium">Login</a>

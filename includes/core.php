@@ -87,8 +87,7 @@ function projectWebhookUrl($projectId = null) {
         $baseUrl = $scheme . "://" . $host . rtrim(dirname($_SERVER["SCRIPT_NAME"] ?? "/"), "/\\");
     }
 
-    $url = $baseUrl . "/webhook.php";
-    return $projectId ? $url . "?projectId=" . urlencode((string) $projectId) : $url;
+    return $baseUrl . "/webhook.php";
 }
 
 function ensureProjectSavedAtColumn(PDO $pdo): void {
