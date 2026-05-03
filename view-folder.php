@@ -37,10 +37,15 @@ $stmt = $pdo->prepare("
            p.current_version AS currentVersion, p.last_updated_at AS lastUpdatedAt,
            COALESCE(p.deployment_mode, 'hostinger_git') AS deploymentMode,
            COALESCE(ps.status, 'initializing') AS deployStatus, ps.status_note AS statusNote,
+           dc.response_time_ms AS responseTimeMs, dc.status_source AS statusSource,
+           dc.version AS checkVersion, dc.commit_hash AS commitHash,
+           (SELECT MAX(checked_at) FROM deployment_checks WHERE project_id = p.project_id AND status = 'deployed') AS lastSuccessfulCheck,
+           (SELECT COUNT(*) FROM deployment_checks dcf WHERE dcf.project_id = p.project_id AND dcf.status IN ('warning','error') AND dcf.checked_at > COALESCE((SELECT MAX(dcs.checked_at) FROM deployment_checks dcs WHERE dcs.project_id = p.project_id AND dcs.status = 'deployed'), '1970-01-01')) AS consecutiveFailures,
            ps.updated_by AS updatedBy, u.fullName as updatedByName
     FROM projects p
     LEFT JOIN project_status ps ON ps.project_id = p.project_id
     LEFT JOIN users u ON ps.updated_by = u.userId
+    LEFT JOIN deployment_checks dc ON dc.id = (SELECT id FROM deployment_checks WHERE project_id = p.project_id ORDER BY checked_at DESC, id DESC LIMIT 1)
     {$subjectWhere}
     ORDER BY p.project_name ASC
 ");
@@ -238,6 +243,8 @@ if (!$isEmbedded):
                     $statusClass = "bg-emerald-50 text-emerald-700 ring-emerald-600/20";
                 } elseif ($statusLabel === "Needs update" || $statusLabel === "Building") {
                     $statusClass = "bg-amber-50 text-amber-700 ring-amber-600/20";
+                } elseif ($statusLabel === "Warning") {
+                    $statusClass = "bg-orange-50 text-orange-700 ring-orange-600/20";
                 } else {
                     $statusClass = "bg-red-50 text-red-700 ring-red-600/20";
                 }
@@ -255,8 +262,14 @@ if (!$isEmbedded):
                 <div class="space-y-3 rounded-lg bg-slate-50 p-4 text-sm">
                     <div class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Version</span>
-                        <span class="font-medium text-slate-800"><?php echo htmlspecialchars($website["currentVersion"] ?? "1.0.0"); ?></span>
+                        <span data-latest-version class="font-medium text-slate-800"><?php echo htmlspecialchars($website["checkVersion"] ?? $website["currentVersion"] ?? "1.0.0"); ?></span>
                     </div>
+                    <?php if (!empty($website["commitHash"])): ?>
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-slate-500">Commit</span>
+                        <span data-latest-commit class="font-medium text-slate-800"><?php echo htmlspecialchars(substr($website["commitHash"], 0, 12)); ?></span>
+                    </div>
+                    <?php endif; ?>
                     <div class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Last updated</span>
                         <span class="project-time font-medium text-slate-800"><?php echo $timeAgo; ?></span>
@@ -269,6 +282,18 @@ if (!$isEmbedded):
                         <span class="text-slate-500">Monitoring</span>
                         <span class="truncate font-medium text-slate-800"><?php echo htmlspecialchars(deploymentModeLabel($website["deploymentMode"])); ?></span>
                     </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-slate-500">Health</span>
+                        <span class="truncate font-medium text-slate-800"><span data-status-response-time><?php echo $website["responseTimeMs"] ? htmlspecialchars($website["responseTimeMs"] . " ms") : "—"; ?></span> · <span data-status-source><?php echo htmlspecialchars($website["statusSource"] ?? "—"); ?></span></span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-slate-500">Last OK</span>
+                        <span data-last-successful-check class="truncate font-medium text-slate-800"><?php echo htmlspecialchars(formatNucleusDateTime($website["lastSuccessfulCheck"])); ?></span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-slate-500">Failures</span>
+                        <span data-consecutive-failures class="font-medium text-slate-800"><?php echo (int) ($website["consecutiveFailures"] ?? 0); ?></span>
+                    </div>
                 </div>
 
                 <?php if (hasPermission("update_project")): ?>
@@ -279,6 +304,7 @@ if (!$isEmbedded):
                         </svg>
                         Mark Updated
                     </button>
+                    <a href="dashboard.php?page=project-details&projectId=<?php echo $website["websiteId"]; ?>" class="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200">View Checks</a>
                 </div>
                 <?php endif; ?>
             </article>

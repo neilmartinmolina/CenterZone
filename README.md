@@ -21,4 +21,16 @@ Run `php init_db.php` for a clean install. If a different `nucleus` schema alrea
 3. For `custom_webhook`, put a deploy script in the deployed project, such as `deploy.example.php` adapted as `deploy.php`.
 4. In GitHub, use one webhook only. In `hostinger_git` mode, point it at Hostinger's Git deployment flow. In `custom_webhook` mode, point it at the deployed project's `deploy.php`.
 
-Nucleus never deploys from a webhook and must not be configured as a second GitHub webhook. It polls each project's status endpoints and mirrors that read-only status into the dashboard. If a Hostinger Git project has no remote status file but the homepage is reachable, Nucleus marks it online/deployed with the note `Hostinger Git mode: no remote status file found.`
+Nucleus never deploys from a webhook and must not be configured as a second GitHub webhook. It polls each project's status endpoints, saves every result to `deployment_checks`, and mirrors the current read-only status into the dashboard. If a Hostinger Git project has no remote status file but the homepage is reachable, Nucleus marks it online/deployed with the note `Hostinger Git mode: no remote status file found.`
+
+Optional `version.json` format for any project:
+
+```json
+{
+  "project": "ProjectName",
+  "version": "1.0.0",
+  "commit": "manual-or-github-hash",
+  "branch": "main",
+  "updated_at": "2026-05-02 17:00:00"
+}
+```

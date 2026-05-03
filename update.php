@@ -43,9 +43,9 @@ if (!Security::validateVersion($version)) {
 }
 
 // Validate status
-$statusMap = ["updated" => "deployed", "updating" => "building", "issue" => "error", "working" => "deployed", "initializing" => "initializing", "building" => "building", "deployed" => "deployed", "error" => "error"];
+$statusMap = ["updated" => "deployed", "updating" => "building", "issue" => "error", "working" => "deployed", "initializing" => "initializing", "building" => "building", "deployed" => "deployed", "warning" => "warning", "error" => "error"];
 $status = $statusMap[$status] ?? $status;
-$validStatuses = ["initializing", "building", "deployed", "error"];
+$validStatuses = ["initializing", "building", "deployed", "warning", "error"];
 if (!in_array($status, $validStatuses)) {
     echo SweetAlert::error("Validation Error", "Invalid status selected");
     exit;

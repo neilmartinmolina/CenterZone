@@ -92,7 +92,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $error = "Webhook secret is required.";
     } elseif (!Security::validateVersion($website["currentVersion"])) {
         $error = "Version must be in format like 1.0.0 or v1.0.0.";
-    } elseif (!in_array($website["status"], ["initializing", "building", "deployed", "error"], true)) {
+    } elseif (!in_array($website["status"], ["initializing", "building", "deployed", "warning", "error"], true)) {
         $error = "Invalid status selected.";
     } elseif (!empty($website["folder_id"]) && !$roleManager->canAccessSubject($_SESSION["userId"], (int) $website["folder_id"])) {
         $error = "You do not have access to that subject.";
@@ -182,6 +182,13 @@ $tutorialUrl = rtrim(APP_URL, "/") . "/tutorial/setting-up-your-project";
 $projectPublicBase = rtrim($website["url"], "/");
 $deployWebhookUrl = $projectPublicBase !== "" ? $projectPublicBase . "/deploy.php" : "";
 $statusEndpointUrl = $projectPublicBase !== "" ? $projectPublicBase . "/status.json" : "";
+$versionJson = json_encode([
+    "project" => $website["websiteName"] !== "" ? $website["websiteName"] : "ProjectName",
+    "version" => $website["currentVersion"] !== "" ? $website["currentVersion"] : "1.0.0",
+    "commit" => "manual-or-github-hash",
+    "branch" => "main",
+    "updated_at" => date("Y-m-d H:i:s"),
+], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 $isCustomWebhook = $website["deployment_mode"] === "custom_webhook";
 $formAction = "get_content.php?tab=project-form";
 if ($websiteId) {
@@ -244,7 +251,7 @@ if ($websiteId) {
       <div>
         <label class="mb-1 block text-sm font-medium text-slate-700">Status</label>
         <select name="status" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cta focus:ring-2 focus:ring-cta/20">
-          <?php foreach (["initializing" => "Initializing", "building" => "Building", "deployed" => "Deployed", "error" => "Error"] as $value => $label): ?>
+          <?php foreach (["initializing" => "Initializing", "building" => "Building", "deployed" => "Deployed", "warning" => "Warning", "error" => "Error"] as $value => $label): ?>
           <option value="<?php echo $value; ?>" <?php echo $website["status"] === $value ? "selected" : ""; ?>><?php echo $label; ?></option>
           <?php endforeach; ?>
         </select>
@@ -293,6 +300,11 @@ if ($websiteId) {
           <input id="statusEndpointUrl" readonly value="<?php echo htmlspecialchars($statusEndpointUrl); ?>" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           <button type="button" class="copy-btn rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" data-copy-target="statusEndpointUrl">Copy</button>
         </div>
+      </div>
+      <div>
+        <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Optional version.json</label>
+        <textarea id="versionJsonTemplate" readonly rows="7" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700"><?php echo htmlspecialchars($versionJson); ?></textarea>
+        <button type="button" class="copy-btn mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50" data-copy-target="versionJsonTemplate">Copy version.json template</button>
       </div>
       <div>
         <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Setup Webhook On</label>

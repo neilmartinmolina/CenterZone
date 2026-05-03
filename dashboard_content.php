@@ -6,10 +6,15 @@ $roleManager = new RoleManager($pdo);
 $todayWhere = $accessWhere ? $accessWhere . " AND DATE(p.last_updated_at) = CURDATE()" : " WHERE DATE(p.last_updated_at) = CURDATE()";
 
 $todayQuery = "
-    SELECT p.*, ps.status, ps.status_note, ps.updated_by AS updatedBy, u.fullName
+    SELECT p.*, ps.status, ps.status_note, ps.updated_by AS updatedBy, u.fullName,
+           dc.response_time_ms, dc.status_source, dc.version AS check_version,
+           dc.commit_hash, dc.checked_at AS latest_check_at,
+           (SELECT MAX(checked_at) FROM deployment_checks WHERE project_id = p.project_id AND status = 'deployed') AS last_successful_check,
+           (SELECT COUNT(*) FROM deployment_checks dcf WHERE dcf.project_id = p.project_id AND dcf.status IN ('warning','error') AND dcf.checked_at > COALESCE((SELECT MAX(dcs.checked_at) FROM deployment_checks dcs WHERE dcs.project_id = p.project_id AND dcs.status = 'deployed'), '1970-01-01')) AS consecutive_failures
     FROM projects p
     LEFT JOIN project_status ps ON ps.project_id = p.project_id
     LEFT JOIN users u ON ps.updated_by = u.userId
+    LEFT JOIN deployment_checks dc ON dc.id = (SELECT id FROM deployment_checks WHERE project_id = p.project_id ORDER BY checked_at DESC, id DESC LIMIT 1)
     {$todayWhere}
     ORDER BY p.last_updated_at DESC
 ";
@@ -18,10 +23,15 @@ $todayStmt->execute($accessParams);
 $today = $todayStmt->fetchAll();
 
 $allStmt = $pdo->prepare("
-    SELECT p.*, ps.status, ps.status_note, ps.updated_by AS updatedBy, u.fullName
+    SELECT p.*, ps.status, ps.status_note, ps.updated_by AS updatedBy, u.fullName,
+           dc.response_time_ms, dc.status_source, dc.version AS check_version,
+           dc.commit_hash, dc.checked_at AS latest_check_at,
+           (SELECT MAX(checked_at) FROM deployment_checks WHERE project_id = p.project_id AND status = 'deployed') AS last_successful_check,
+           (SELECT COUNT(*) FROM deployment_checks dcf WHERE dcf.project_id = p.project_id AND dcf.status IN ('warning','error') AND dcf.checked_at > COALESCE((SELECT MAX(dcs.checked_at) FROM deployment_checks dcs WHERE dcs.project_id = p.project_id AND dcs.status = 'deployed'), '1970-01-01')) AS consecutive_failures
     FROM projects p
     LEFT JOIN project_status ps ON ps.project_id = p.project_id
     LEFT JOIN users u ON ps.updated_by = u.userId
+    LEFT JOIN deployment_checks dc ON dc.id = (SELECT id FROM deployment_checks WHERE project_id = p.project_id ORDER BY checked_at DESC, id DESC LIMIT 1)
     {$accessWhere}
     ORDER BY p.project_name ASC
 ");
@@ -113,6 +123,7 @@ $updatedToday = count($today);
       <thead><tr class="text-left text-sm text-slate-600 border-b border-slate-100">
         <th class="pb-3 pl-4 pr-4 font-semibold">Project</th>
         <th class="pb-3 pr-4 font-semibold">Status</th>
+        <th class="pb-3 pr-4 font-semibold">Health</th>
         <th class="pb-3 pr-4 font-semibold">Version</th>
         <?php if (hasPermission("update_project")): ?><th class="no-sort pb-3 pr-4 font-semibold">Action</th><?php endif; ?>
       </tr></thead>
@@ -124,7 +135,12 @@ $updatedToday = count($today);
     <span data-project-status-id="<?php echo (int) $r["project_id"]; ?>" title="<?php echo htmlspecialchars($r["status_note"] ?? ""); ?>" class="px-2 py-1 rounded text-sm font-medium badge-<?php echo htmlspecialchars($r["status"] ?? "initializing"); ?>"><?php echo ucfirst(htmlspecialchars($r["status"] ?? "initializing")); ?></span>
     <div class="mt-1 text-xs text-slate-500"><?php echo htmlspecialchars(deploymentModeLabel($r["deployment_mode"] ?? "hostinger_git")); ?></div>
   </td>
-  <td class="py-3 pr-4"><?php echo htmlspecialchars($r["current_version"]); ?></td>
+  <td class="py-3 pr-4 text-xs text-slate-500">
+    <div><span data-status-response-time><?php echo $r["response_time_ms"] ? htmlspecialchars($r["response_time_ms"] . " ms") : "—"; ?></span> · <span data-status-source><?php echo htmlspecialchars($r["status_source"] ?? "—"); ?></span></div>
+    <div>Last OK: <span data-last-successful-check><?php echo htmlspecialchars(formatNucleusDateTime($r["last_successful_check"])); ?></span></div>
+    <div>Failures: <span data-consecutive-failures><?php echo (int) ($r["consecutive_failures"] ?? 0); ?></span></div>
+  </td>
+  <td class="py-3 pr-4"><span data-latest-version><?php echo htmlspecialchars($r["check_version"] ?? $r["current_version"]); ?></span><?php if (!empty($r["commit_hash"])): ?><div class="text-xs text-slate-500" data-latest-commit><?php echo htmlspecialchars(substr($r["commit_hash"], 0, 12)); ?></div><?php endif; ?></td>
    <?php if (hasPermission("update_project")): ?><td class="py-3 pr-4"><button class="status-select px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors border border-slate-200 cursor-pointer" data-website-id="<?php echo $r["project_id"]; ?>">Update</button></td><?php endif; ?>
 </tr>
 <?php endforeach; ?>
@@ -137,5 +153,6 @@ $updatedToday = count($today);
 .badge-initializing { background:#e0f2fe; color:#075985; }
 .badge-building { background:#fef3c7; color:#92400e; }
 .badge-deployed { background:#d1fae5; color:#065f46; }
+.badge-warning { background:#ffedd5; color:#9a3412; }
 .badge-error { background:#fee2e2; color:#991b1b; }
 </style>

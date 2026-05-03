@@ -240,7 +240,7 @@ generateCSRFToken();
         }
 
         function pageTitles(page) {
-            return { dashboard: 'Dashboard', folders: 'Subjects', websites: 'Projects', 'project-form': 'Project Setup', usermanagement: 'Users', requests: 'Requests', settings: 'Settings', logs: 'Logs' }[page] || 'Nucleus';
+            return { dashboard: 'Dashboard', folders: 'Subjects', websites: 'Projects', 'project-form': 'Project Setup', 'project-details': 'Project Details', usermanagement: 'Users', requests: 'Requests', settings: 'Settings', logs: 'Logs' }[page] || 'Nucleus';
         }
 
         function showFeedback(scope = document) {
@@ -264,6 +264,7 @@ generateCSRFToken();
                     initializing: base + 'bg-sky-50 text-sky-700 ring-sky-600/20',
                     building: base + 'bg-amber-50 text-amber-700 ring-amber-600/20',
                     deployed: base + 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+                    warning: base + 'bg-orange-50 text-orange-700 ring-orange-600/20',
                     error: base + 'bg-red-50 text-red-700 ring-red-600/20',
                 }[status] || base + 'bg-red-50 text-red-700 ring-red-600/20';
             }
@@ -277,6 +278,22 @@ generateCSRFToken();
             badge.className = statusBadgeClasses(status, isCardBadge);
             badge.textContent = result.displayStatus || status.charAt(0).toUpperCase() + status.slice(1);
             badge.title = result.message || '';
+            const row = badge.closest('tr');
+            const scope = row || badge.closest('.project-card') || badge.parentElement;
+            if (scope) {
+                const responseTime = scope.querySelector('[data-status-response-time]');
+                if (responseTime) responseTime.textContent = result.responseTimeMs ? `${result.responseTimeMs} ms` : '—';
+                const source = scope.querySelector('[data-status-source]');
+                if (source) source.textContent = result.statusSource || '—';
+                const lastSuccess = scope.querySelector('[data-last-successful-check]');
+                if (lastSuccess) lastSuccess.textContent = result.displayLastSuccessfulCheck || 'Never';
+                const failures = scope.querySelector('[data-consecutive-failures]');
+                if (failures) failures.textContent = String(result.consecutiveFailures ?? 0);
+                const version = scope.querySelector('[data-latest-version]');
+                if (version && result.version) version.textContent = result.version;
+                const commit = scope.querySelector('[data-latest-commit]');
+                if (commit && result.commitHash) commit.textContent = result.commitHash.substring(0, 12);
+            }
 
             const card = badge.closest('.project-card');
             if (card) {

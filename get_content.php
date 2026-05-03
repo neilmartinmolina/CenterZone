@@ -22,6 +22,9 @@ switch ($tab) {
     case "project-form":
         require_once __DIR__ . "/project_form.php";
         break;
+    case "project-details":
+        require_once __DIR__ . "/project_details.php";
+        break;
     case "view-folder":
         require_once __DIR__ . "/view-folder.php";
         break;

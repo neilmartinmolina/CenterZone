@@ -30,6 +30,10 @@ require_once __DIR__ . "/../../config.php";
         <h2 class="text-lg font-semibold text-slate-900">4. Let Nucleus monitor status</h2>
         <p class="mt-2 text-sm leading-6 text-slate-600">Do not create a second webhook for Nucleus. Nucleus polls <code class="rounded bg-slate-100 px-1 py-0.5">status.json</code>, <code class="rounded bg-slate-100 px-1 py-0.5">/api/status</code>, optional <code class="rounded bg-slate-100 px-1 py-0.5">version.json</code>, and the homepage, then mirrors the read-only result into the dashboard.</p>
       </section>
+      <section>
+        <h2 class="text-lg font-semibold text-slate-900">5. Optional version.json</h2>
+        <p class="mt-2 text-sm leading-6 text-slate-600">For lightweight metadata, add a <code class="rounded bg-slate-100 px-1 py-0.5">version.json</code> file with project, version, commit, branch, and updated_at fields. Nucleus records those values in each deployment check.</p>
+      </section>
     </div>
   </main>
 </body>

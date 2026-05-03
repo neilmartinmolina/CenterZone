@@ -31,10 +31,11 @@ $statusMap = [
     "initializing" => "initializing",
     "building" => "building",
     "deployed" => "deployed",
+    "warning" => "warning",
     "error" => "error",
 ];
 $status = $statusMap[$status] ?? $status;
-$validStatuses = ["initializing", "building", "deployed", "error"];
+$validStatuses = ["initializing", "building", "deployed", "warning", "error"];
 if (!in_array($status, $validStatuses)) {
     echo json_encode(["success" => false, "message" => "Invalid status"]);
     exit;

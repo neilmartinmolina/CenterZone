@@ -88,11 +88,16 @@ if (isset($_GET["unlist"]) && hasPermission("update_project")) {
 
 [$accessWhere, $accessParams] = $roleManager->projectAccessSql("p");
 $stmt = $pdo->prepare("
-    SELECT p.*, ps.status, ps.status_note, ps.updated_by AS updatedBy, u.fullName, s.subject_code AS folderName
+    SELECT p.*, ps.status, ps.status_note, ps.updated_by AS updatedBy, u.fullName, s.subject_code AS folderName,
+           dc.response_time_ms, dc.status_source, dc.version AS check_version,
+           dc.commit_hash, dc.branch, dc.checked_at AS latest_check_at,
+           (SELECT MAX(checked_at) FROM deployment_checks WHERE project_id = p.project_id AND status = 'deployed') AS last_successful_check,
+           (SELECT COUNT(*) FROM deployment_checks dcf WHERE dcf.project_id = p.project_id AND dcf.status IN ('warning','error') AND dcf.checked_at > COALESCE((SELECT MAX(dcs.checked_at) FROM deployment_checks dcs WHERE dcs.project_id = p.project_id AND dcs.status = 'deployed'), '1970-01-01')) AS consecutive_failures
     FROM projects p
     LEFT JOIN project_status ps ON ps.project_id = p.project_id
     LEFT JOIN users u ON ps.updated_by = u.userId
     LEFT JOIN subjects s ON p.subject_id = s.subject_id
+    LEFT JOIN deployment_checks dc ON dc.id = (SELECT id FROM deployment_checks WHERE project_id = p.project_id ORDER BY checked_at DESC, id DESC LIMIT 1)
     {$accessWhere}
     ORDER BY p.last_updated_at DESC
 ");
@@ -127,6 +132,7 @@ $folders = $roleManager->getUserSubjects($_SESSION["userId"]);
           <th class="pb-3 pr-4 font-semibold">Subject</th>
           <th class="pb-3 pr-4 font-semibold">Version</th>
           <th class="pb-3 pr-4 font-semibold">Status</th>
+          <th class="pb-3 pr-4 font-semibold">Health</th>
           <th class="pb-3 pr-4 font-semibold">Updated By</th>
           <th class="pb-3 pr-4 font-semibold">Updated At</th>
           <th class="pb-3 pr-4 font-semibold">Saved At</th>
@@ -138,10 +144,15 @@ $folders = $roleManager->getUserSubjects($_SESSION["userId"]);
         <tr class="hover:bg-slate-50 transition-colors">
           <td class="py-4 pl-6 pr-4 font-medium text-slate-800"><?php echo htmlspecialchars($w["project_name"]); ?></td>
           <td class="py-4 pr-4 text-sm text-slate-600"><?php echo htmlspecialchars($w["folderName"] ?? "—"); ?></td>
-          <td class="py-4 pr-4"><span class="px-2 py-1 rounded bg-blue-50 text-blue-700 text-sm font-medium"><?php echo htmlspecialchars($w["current_version"]); ?></span></td>
+          <td class="py-4 pr-4"><span data-latest-version class="px-2 py-1 rounded bg-blue-50 text-blue-700 text-sm font-medium"><?php echo htmlspecialchars($w["check_version"] ?? $w["current_version"]); ?></span><?php if (!empty($w["commit_hash"])): ?><div class="mt-1 text-xs text-slate-500" data-latest-commit><?php echo htmlspecialchars(substr($w["commit_hash"], 0, 12)); ?></div><?php endif; ?></td>
           <td class="py-4 pr-4">
             <span data-project-status-id="<?php echo (int) $w["project_id"]; ?>" title="<?php echo htmlspecialchars($w["status_note"] ?? ""); ?>" class="px-2 py-1 rounded text-sm font-medium badge-<?php echo htmlspecialchars($w["status"] ?? "initializing"); ?>"><?php echo ucfirst(htmlspecialchars($w["status"] ?? "initializing")); ?></span>
             <div class="mt-1 text-xs text-slate-500"><?php echo htmlspecialchars(deploymentModeLabel($w["deployment_mode"] ?? "hostinger_git")); ?></div>
+          </td>
+          <td class="py-4 pr-4 text-xs text-slate-500">
+            <div><span data-status-response-time><?php echo $w["response_time_ms"] ? htmlspecialchars($w["response_time_ms"] . " ms") : "—"; ?></span> · <span data-status-source><?php echo htmlspecialchars($w["status_source"] ?? "—"); ?></span></div>
+            <div>Last OK: <span data-last-successful-check><?php echo htmlspecialchars(formatNucleusDateTime($w["last_successful_check"])); ?></span></div>
+            <div>Failures: <span data-consecutive-failures><?php echo (int) ($w["consecutive_failures"] ?? 0); ?></span></div>
           </td>
           <td class="py-4 pr-4 text-sm text-slate-600"><?php echo htmlspecialchars(displayUpdatedBy($w)); ?></td>
           <td class="py-4 pr-4 text-sm text-slate-500"><?php echo htmlspecialchars(formatNucleusDateTime($w["last_updated_at"])); ?></td>
@@ -150,6 +161,7 @@ $folders = $roleManager->getUserSubjects($_SESSION["userId"]);
             <div class="flex items-center gap-2">
               <?php if (hasPermission("update_project")): ?>
               <a href="dashboard.php?page=project-form&websiteId=<?php echo $w['project_id']; ?>" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">Edit</a>
+              <a href="dashboard.php?page=project-details&projectId=<?php echo $w['project_id']; ?>" class="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm transition-colors">Details</a>
               <?php if (!empty($w["subject_id"])): ?>
               <a href="dashboard.php?page=websites&unlist=<?php echo $w['project_id']; ?>" data-confirm="This removes the project from its subject without deleting it." data-confirm-title="Unlist this project?" data-confirm-button="Unlist" class="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm transition-colors">Unlist</a>
               <?php endif; ?>
@@ -171,5 +183,6 @@ $folders = $roleManager->getUserSubjects($_SESSION["userId"]);
 .badge-initializing { background:#e0f2fe; color:#075985; }
 .badge-building { background:#fef3c7; color:#92400e; }
 .badge-deployed { background:#d1fae5; color:#065f46; }
+.badge-warning { background:#ffedd5; color:#9a3412; }
 .badge-error { background:#fee2e2; color:#991b1b; }
 </style>

@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS project_status (
     status_id INT PRIMARY KEY AUTO_INCREMENT,
     project_id INT NOT NULL UNIQUE,
-    status ENUM('initializing', 'building', 'deployed', 'error') NOT NULL DEFAULT 'initializing',
+    status ENUM('initializing', 'building', 'deployed', 'warning', 'error') NOT NULL DEFAULT 'initializing',
     last_commit VARCHAR(255) NULL,
     status_note TEXT NULL,
     checked_at TIMESTAMP NULL,
@@ -126,6 +126,24 @@ CREATE TABLE IF NOT EXISTS project_status (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
     FOREIGN KEY (updated_by) REFERENCES users(userId) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS deployment_checks (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    project_id INT NOT NULL,
+    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status ENUM('initializing', 'building', 'deployed', 'warning', 'error') NOT NULL,
+    http_code INT NULL,
+    response_time_ms INT NULL,
+    status_source VARCHAR(50) NOT NULL,
+    error_message TEXT NULL,
+    version VARCHAR(100) NULL,
+    commit_hash VARCHAR(255) NULL,
+    branch VARCHAR(255) NULL,
+    remote_updated_at TIMESTAMP NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
+    INDEX idx_deployment_checks_project_checked (project_id, checked_at),
+    INDEX idx_deployment_checks_project_status (project_id, status)
 );
 
 CREATE TABLE IF NOT EXISTS project_members (
